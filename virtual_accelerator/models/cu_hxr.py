@@ -11,6 +11,14 @@ from virtual_accelerator.bmad.utils import (
 
 
 def get_cu_hxr_bmad_model():
+    """
+    Get the LUMEBmadModel for the CU_HXR lattice.
+
+    Returns
+    -------
+    LUMEBmadModel
+        Instance of the LUMEBmadModel for the CU_HXR lattice.
+    """
 
     LCLS_LATTICE = os.environ["LCLS_LATTICE"]
 
