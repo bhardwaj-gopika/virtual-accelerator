@@ -1,34 +1,6 @@
 import yaml
 from lume.variables import ScalarVariable
 
-TAO_OUTPUT_UNITS = {
-    "ele.name": "",
-    "ele.ix_ele": "",
-    "ele.ix_branch": "",
-    "ele.a.beta": "m",
-    "ele.a.alpha": "",
-    "ele.a.eta": "m",
-    "ele.a.etap": "",
-    "ele.a.gamma": "1/m",
-    "ele.a.phi": "",
-    "ele.b.beta": "m",
-    "ele.b.alpha": "",
-    "ele.b.eta": "m",
-    "ele.b.etap": "",
-    "ele.b.gamma": "1/m",
-    "ele.b.phi": "",
-    "ele.x.eta": "m",
-    "ele.x.etap": "",
-    "ele.y.eta": "m",
-    "ele.y.etap": "",
-    "ele.s": "m",
-    "ele.l": "m",
-    "ele.e_tot": "eV",
-    "ele.p0c": "eV",
-    "ele.mat6": "",
-    "ele.vec0": "m",
-}
-
 
 def import_control_variables(control_variable_file: str):
     """
