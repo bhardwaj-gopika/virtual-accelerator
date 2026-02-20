@@ -5,7 +5,17 @@ from pytao import Tao
 # from lcls_live.datamaps import get_datamaps
 
 
-class SLAC2BmadTransformer(BmadTransformer):
+class CUBmadTransformer(BmadTransformer):
+    """
+    Attributes
+    ----------
+    control_name_to_cheetah : dict[str, str]
+        A dictionary mapping control variable names to cheetah elements
+        (e.g. {"QUAD:IN20:511": "QE03"})
+        #same something about how bctrl maps to k1, in utils.py
+
+    """
+
     def get_tao_property(self, tao: Tao, control_name: str):
         """
         Get a property of an element from Bmad via Tao and
@@ -19,7 +29,7 @@ class SLAC2BmadTransformer(BmadTransformer):
         tao: Tao
             Instance of the Tao class.
         control_name: str
-            Name of the control variable to retrieve.
+            Name of the control variable to retrieve. Example: "QUAD:IN20:511:BCTRL"
 
         Returns
         -------
@@ -29,11 +39,13 @@ class SLAC2BmadTransformer(BmadTransformer):
         """
 
         # Map control name to element and attribute
-        element, attr = self.control_name_to_bmad[control_name].split(" ")
-        ele_attr = tao.ele_gen_attribs(element)
-        if attr == "b1_gradient":
-            # convert from Bmad units to EPICS units
-            return ele_attr["B1_GRADIENT"] * ele_attr["L"] * 10
+        element_name, attr = self.control_name_to_bmad[control_name].split(":")
+        element_type = element_name.split(":")[0]  # QUAD, KLYS, etc.
+        ele_attr = tao.ele_gen_attribs(element_name)
+        if element_type == "QUAD":
+            if attr == "BCTRL" or attr == "BACT" or attr == "BDES":
+                # convert from Bmad units to EPICS units
+                return ele_attr["B1_GRADIENT"] * ele_attr["L"] * 10
         else:
             return ele_attr[attr]
 
@@ -62,10 +74,12 @@ class SLAC2BmadTransformer(BmadTransformer):
         tao_cmds = []
         for name, value in pvdata.items():
             element, attr = self.control_name_to_bmad[name].split(" ")
-            if attr == "b1_gradient":
-                # convert from EPICS units to Bmad units
-                ele_attr = tao.ele_gen_attribs(element)
-                bmad_value = value / (ele_attr["L"] * 10)
+            element_type = element.split(":")[0]  # QUAD, KLYS, etc.
+            if element_type == "QUAD":
+                if attr == "BCTRL":
+                    # convert from EPICS units to Bmad units
+                    ele_attr = tao.ele_gen_attribs(element)
+                    bmad_value = value / (ele_attr["L"] * 10)
             else:
                 bmad_value = value
             tao_cmd = f"set ele {element} {attr} = {bmad_value}"
