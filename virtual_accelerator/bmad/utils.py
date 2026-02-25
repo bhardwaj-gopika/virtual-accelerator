@@ -1,10 +1,48 @@
 import yaml
 from lume.variables import ScalarVariable
+from typing import Any
+from lume_bmad.transformer import BmadTransformer
+from pytao import Tao
+
+# from lcls_live.datamaps import get_datamaps
+
+ 
+TAO_OUTPUT_UNITS = {
+    "ele.name": "",
+    "ele.ix_ele": "",
+    "ele.ix_branch": "",
+    "ele.a.beta": "m",
+    "ele.a.alpha": "",
+    "ele.a.eta": "m",
+    "ele.a.etap": "",
+    "ele.a.gamma": "1/m",
+    "ele.a.phi": "",
+    "ele.b.beta": "m",
+    "ele.b.alpha": "",
+    "ele.b.eta": "m",
+    "ele.b.etap": "",
+    "ele.b.gamma": "1/m",
+    "ele.b.phi": "",
+    "ele.x.eta": "m",
+    "ele.x.etap": "",
+    "ele.y.eta": "m",
+    "ele.y.etap": "",
+    "ele.s": "m",
+    "ele.l": "m",
+    "ele.e_tot": "eV",
+    "ele.p0c": "eV",
+    "ele.mat6": "",
+    "ele.vec0": "m",
+}
+
+###############################################################
+# Utility functions for importing control and output variables
+################################################################
 
 
 def import_control_variables(control_variable_file: str):
     """
-    Import control variables from a YAML file and define them as Variable instances.
+    Import control variables from a YAML file and define them as ScalarVariables.
     Also get the mapping between device PV names and Bmad element names.
 
     TODO: move SLAC specific mapping and unit conversions to slac-tools
@@ -16,8 +54,8 @@ def import_control_variables(control_variable_file: str):
 
     Returns
     -------
-    dict[str, Variable]
-        Dictionary of pv variables to Variable instances.
+    dict[str, ScalarVariable]
+        Dictionary of pv variables to ScalarVariable instances.
     dict[str, str]
         Mapping between PV names and Bmad element names + attributes.
     """
@@ -32,24 +70,74 @@ def import_control_variables(control_variable_file: str):
     quads = control_variable.get("quad", [])
     for quad in quads:
         pv_name = quad["pvname"]
+        device_name = ':'.join(pv_name.split(':')[0:3])
 
         # map pv to bmad element name and attribute
-        control_name_to_bmad[pv_name] = " ".join(
-            [quad["bmad_name"], quad["bmad_attribute"]]
-        )
+        control_name_to_bmad[device_name] = quad["bmad_name"]
+        
         var_dict[pv_name] = ScalarVariable(
             name=pv_name,
-            value_range=(quad["min_value"], quad["max_value"]),
-            unit="kG",
+            #value_range=(quad["min_value"], quad["max_value"]),
+            unit="kG-m",
             read_only=False,
         )
 
+    # handle correctors
+    corrs = control_variable.get("correctors", [])
+    for corr in corrs:
+        pv_name = corr["pvname"]
+        device_name = ':'.join(pv_name.split(':')[0:3])
+
+        # map pv to bmad element name and attribute
+        control_name_to_bmad[device_name] = corr["bmad_name"]
+        
+        var_dict[pv_name] = ScalarVariable(
+            name=pv_name,
+            #value_range=(quad["min_value"], quad["max_value"]),
+            unit="kG-m",
+            read_only=False,
+        )
+
+    # handle klystrons
+    klystron_keys = [k for k in control_variable.keys() if k[0] == 'K']
+    for station in klystron_keys:
+        klys = control_variable.get(station)[0]
+        # map pv to bmad element name and attribute
+        pv_name = klys['ampl_des_pvname']
+        device_name = ':'.join(pv_name.split(':')[0:3])
+        control_name_to_bmad[device_name] = klys["name"]
+        
+        var_dict[pv_name] = ScalarVariable(
+            name=pv_name,
+            value_range=(-180, 180),
+            unit="kG-m",
+            read_only=False,
+        )
+        pv_name = klys['phase_des_pvname']
+        if klys["name"] in ['K24_1', 'K24_2', 'K24_3']:
+            accl_name = ':'.join(pv_name.split(':')[0:3])
+            control_name_to_bmad[accl_name] = klys["name"]
+        
+        var_dict[pv_name] = ScalarVariable(
+            name=pv_name,
+            #value_range=(quad["min_value"], quad["max_value"]),
+            unit="Deg_S",
+            read_only=False,
+        )
+        if pv_name.split(':')[0] == 'KLYS':
+            pv_name = klys['accelerate_pvname']        
+            var_dict[pv_name] = ScalarVariable(
+                name=pv_name,
+                value_range=(0, 1),
+                unit="",
+                read_only=False,
+            )
     return var_dict, control_name_to_bmad
 
 
 def import_output_variables(output_variable_file: str):
     """
-    Import output variables from a YAML file and define them as Variable instances.
+    Import output variables from a YAML file and define them as ScalarVariables.
     Note that output variables are read-only.
 
     TODO: move SLAC specific mapping and unit conversions to slac-tools
@@ -61,7 +149,7 @@ def import_output_variables(output_variable_file: str):
 
     Returns
     -------
-    dict[str, Variable]
+    dict[str, ScalarVariable]
         Dictionary of output variables mapped by their names.
     """
 
@@ -70,19 +158,32 @@ def import_output_variables(output_variable_file: str):
     with open(output_variable_file, "r") as file:
         output_variables = yaml.safe_load(file)
 
-    for ele in output_variables.keys():
+    for ele in output_variables.keys(): 
         for attr in output_variables[ele].keys():
-            name = attr.replace("ele", "").replace(".", "_")
-            name = ele + name + "_"
+            name = attr.replace("ele", "")
+            name = ele + name 
             out_dict[name] = ScalarVariable(
                 name=name,
                 unit=TAO_OUTPUT_UNITS[attr],
                 read_only=True,
             )
-
+    for ele in [ "WS12", "WS28144", "WS32"]:
+        name = ele + "_beam"
+        out_dict[name] = ScalarVariable(
+                name=name,
+                read_only=True,
+            )
     return out_dict
-
-
 ###############################################################
 # Utility classes / functions for Bmad/Tao interaction
 ###############################################################
+
+def get_beam_info(tao):
+    beam_info = {}
+    lines = tao.cmd('python show beam')
+    track_type = [l.split('=') for l in lines if "global%track_type" in l][0][1]
+    beam_info['track_type'] =  track_type[2:-1]
+    saved_at = [l.split('=') for l in lines if "saved_at" in l][0][1]
+    saved_at = saved_at.strip(' "').split(',')
+    beam_info['saved_at'] = [s.strip(' ') for s in saved_at]
+    return beam_info

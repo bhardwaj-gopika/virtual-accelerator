@@ -39,13 +39,26 @@ class CUBmadTransformer(BmadTransformer):
         """
 
         # Map control name to element and attribute
-        element_name, attr = self.control_name_to_bmad[control_name].split(":")
-        element_type = element_name.split(":")[0]  # QUAD, KLYS, etc.
+        element_name = \
+        self.control_name_to_bmad[":".join(control_name.split(":")[0:3])]
+        device_type = control_name.split(":")[0]  # QUAD, KLYS, etc.
+        attr = control_name.split(":")[3]
         ele_attr = tao.ele_gen_attribs(element_name)
-        if element_type == "QUAD":
+        
+        if device_type == "QUAD":
             if attr == "BCTRL" or attr == "BACT" or attr == "BDES":
                 # convert from Bmad units to EPICS units
-                return ele_attr["B1_GRADIENT"] * ele_attr["L"] * 10
+                return -ele_attr["B1_GRADIENT"] * ele_attr["L"] * 10
+        elif device_type == "KLYS" or device_type == "ACCL":
+            if attr == "ENLD" or "ADES" in attr :
+                tao.ele_control_var(element_name)
+                return tao.ele_control_var(element_name)["ENLD_MEV"]
+            if attr == "PHAS" or "PDES" in attr:
+                return tao.ele_control_var(element_name)["PHASE_DEG"]
+            if attr == "BEAMCODE1_STAT":
+                return tao.ele_control_var(element_name)["IN_USE"]
+        elif device_type == "XCOR" or device_type == "YCOR":
+            return tao.ele_gen_attribs(element_name)['BL_KICK']
         else:
             return ele_attr[attr]
 
@@ -71,18 +84,33 @@ class CUBmadTransformer(BmadTransformer):
             List of Tao commands to execute
 
         """
+        klys_attr_to_bmad = \
+            {"ENLD": "ENLD_MEV", "PDES": "PHASE_DEG",
+             "BEAMCODE1_STAT": "IN_USE", "BEAMCODE2_STAT": "IN_USE"}
         tao_cmds = []
-        for name, value in pvdata.items():
-            element, attr = self.control_name_to_bmad[name].split(" ")
-            element_type = element.split(":")[0]  # QUAD, KLYS, etc.
-            if element_type == "QUAD":
-                if attr == "BCTRL":
+        for pv in pvdata.keys():
+            value = pvdata[pv]
+            pv_name = ':'.join(pv.split(':')[0:3])
+            attr = pv.split(':')[3]
+            element = self.control_name_to_bmad[pv_name]
+            device_type = pv_name.split(":")[0]  # QUAD, KLYS, etc.
+            if device_type == "QUAD":
+                if attr == "BCTRL" or attr == "BDES":
                     # convert from EPICS units to Bmad units
                     ele_attr = tao.ele_gen_attribs(element)
-                    bmad_value = value / (ele_attr["L"] * 10)
-            else:
+                    bmad_value = -value / (ele_attr["L"] * 10)
+                    bmad_attr = 'b1_gradient'
+            elif device_type in ["XCOR", "YCOR"]:
+                if attr == "BCTRL" or attr == "BDES":
+                    bmad_value = -0.1 * value
+                    bmad_attr = "bl_kick"
+            elif device_type == "KLYS":
                 bmad_value = value
-            tao_cmd = f"set ele {element} {attr} = {bmad_value}"
+                bmad_attr = klys_attr_to_bmad[attr]
+            else:
+                print(f"Do not know about {device_type} {attr}")
+            #print(f"set ele for {device_type} {attr} {element} {bmad_attr} = {bmad_value}")
+            tao_cmd = f"set ele {element} {bmad_attr} = {bmad_value}"
             tao_cmds.append(tao_cmd)
 
         return tao_cmds
