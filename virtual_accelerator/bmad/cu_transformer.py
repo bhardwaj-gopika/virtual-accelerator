@@ -1,8 +1,9 @@
 from typing import Any
 from lume_bmad.transformer import BmadTransformer
 from pytao import Tao
-
-# from lcls_live.datamaps import get_datamaps
+from lume_bmad.utils import get_beam_info
+from beamphysics.interfaces.bmad import write_bmad
+from os import getcwd
 
 
 class CUBmadTransformer(BmadTransformer):
@@ -42,6 +43,7 @@ class CUBmadTransformer(BmadTransformer):
         element_name = \
         self.control_name_to_bmad[":".join(control_name.split(":")[0:3])]
         device_type = control_name.split(":")[0]  # QUAD, KLYS, etc.
+        
         attr = control_name.split(":")[3]
         ele_attr = tao.ele_gen_attribs(element_name)
         
@@ -59,6 +61,8 @@ class CUBmadTransformer(BmadTransformer):
                 return tao.ele_control_var(element_name)["IN_USE"]
         elif device_type == "XCOR" or device_type == "YCOR":
             return tao.ele_gen_attribs(element_name)['BL_KICK']
+        elif device_type == "BEAM":
+            a = 1
         else:
             return ele_attr[attr]
 
@@ -88,12 +92,25 @@ class CUBmadTransformer(BmadTransformer):
             {"ENLD": "ENLD_MEV", "PDES": "PHASE_DEG",
              "BEAMCODE1_STAT": "IN_USE", "BEAMCODE2_STAT": "IN_USE"}
         tao_cmds = []
+            
         for pv in pvdata.keys():
             value = pvdata[pv]
+            if 'input_beam' == pv:
+                #Save ParticleGroup to file and re-init beam
+                beam_info = get_beam_info(tao)
+                if beam_info['track_type'] == 'beam':
+                    file_name = getcwd()+'/model_bmad_beam_pg'
+                    write_bmad(value, file_name, p0c = value['mean_p'])
+                    tao.cmd(f'set beam_init position_file = {file_name}')
+                else:
+                    print('Single Particle tracking, no beam information saved')
+                continue
             pv_name = ':'.join(pv.split(':')[0:3])
             attr = pv.split(':')[3]
             element = self.control_name_to_bmad[pv_name]
             device_type = pv_name.split(":")[0]  # QUAD, KLYS, etc.
+            if device_type == "OTRS":
+                continue
             if device_type == "QUAD":
                 if attr == "BCTRL" or attr == "BDES":
                     # convert from EPICS units to Bmad units
@@ -114,3 +131,5 @@ class CUBmadTransformer(BmadTransformer):
             tao_cmds.append(tao_cmd)
 
         return tao_cmds
+
+
