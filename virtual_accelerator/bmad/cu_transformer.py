@@ -61,8 +61,6 @@ class CUBmadTransformer(BmadTransformer):
                 return tao.ele_control_var(element_name)["IN_USE"]
         elif device_type == "XCOR" or device_type == "YCOR":
             return tao.ele_gen_attribs(element_name)['BL_KICK']
-        elif device_type == "BEAM":
-            a = 1
         else:
             return ele_attr[attr]
 
@@ -131,5 +129,13 @@ class CUBmadTransformer(BmadTransformer):
             tao_cmds.append(tao_cmd)
 
         return tao_cmds
+
+    
+    def get_beam_variables(self,beam_path):
+        if beam_path == "cu_hxr":
+            beam_variables =  {'input_element':'OTR2', 'output_element': 'BEGUNDH'}
+        if beam_path == "cu_sxr":
+            beam_variables =  {'input_element':'OTR2', 'output_element': 'BEGUNDS'}
+        return beam_variables
 
 
