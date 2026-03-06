@@ -5,9 +5,9 @@ import os
 import yaml
 from pathlib import Path
 from cheetah.accelerator import Segment, Element
-
+import warnings
 from lume.variables import Variable, ScalarVariable, NDVariable
-from virtual_accelerator.cheetah.utils import get_mad_mapping
+from virtual_accelerator.cheetah.utils import get_mad_mapping, get_control_mad_mapping
 from copy import copy
 
 LCLS_ELEMENTS = os.path.join(
@@ -18,6 +18,11 @@ SLAC_VARIABLE_CONFIG_FILE = os.path.join(
     Path(__file__).parent.resolve(),
     "slac_variable_config.yaml",
 )
+
+VARIABLE_CLASS_MAP = {
+    "ScalarVariable": ScalarVariable,
+    "NDVariable": NDVariable,
+}
 
 
 def get_variables_from_element(
@@ -89,33 +94,55 @@ def get_variables_from_element(
             }
         }
     }
-
     """
+
+
     variables = {}
 
     # determine the cheetah element type as a string to look up in the config mapping
     element_type = type(element).__name__
     element_attributes = element_attr_mapping.get(element_type)
     if element_attributes is None:
-        raise KeyError(
+        warnings.warn(
             f"No variable configuration found for element type {element_type!r}"
         )
+        return variables
 
     # iterate over the configured attributes for this element type and instantiate variables
     for attr, var_config in element_attributes.items():
-        # create the variable name by combining the control name and attribute (e.g. "QUAD:IN20:425:BCTRL")
+
+        # create the variable name by combining the control name and attribute
+        # (e.g. "QUAD:IN20:425:BCTRL")
         variable_name = f"{control_name}:{attr}"
 
-        # create a variable instance using the specified variable class and additional config parameters
-        variable_class = type(var_config.pop("variable_class"))
+        # copy the config so we do not mutate the original YAML mapping
         variable_info = copy(var_config)
+
+        # retrieve the variable class specified in the configuration
+        variable_class = variable_info.pop("variable_class")
+
+        # if the variable class was provided as a string (as it is in YAML),
+        # convert it to the actual imported class
+        if isinstance(variable_class, str):
+            try:
+                variable_class = VARIABLE_CLASS_MAP[variable_class]
+            except KeyError as e:
+                raise ValueError(
+                    f"Unknown variable_class {variable_class!r} "
+                    f"for {element_type}.{attr}"
+                ) from e
 
         # if this is an NDVariable and the attribute is "Image:ArrayData",
         # we need to determine the shape from the lattice element's resolution
         if variable_class is NDVariable and attr == "Image:ArrayData":
             variable_info["shape"] = tuple(element.resolution)
 
-        variables[variable_name] = variable_class(name=variable_name, **variable_info)
+        # create a variable instance using the specified variable class
+        # and additional configuration parameters
+        variables[variable_name] = variable_class(
+            name=variable_name,
+            **variable_info,
+        )
 
     return variables
 
@@ -158,12 +185,25 @@ def get_variables_from_segment(
     See `get_variables_from_element` for details on the specification of `element_attr_mapping`.
 
     """
+    # 
     all_variables = {}
     for element in segment.elements:
-        try:
-            control_name = device_mapping[element.name]
-        except KeyError as e:
-            raise KeyError(f"Element {element.name} not found in device mapping") from e
+        
+        #try:
+            # 1.) control_name = device_mapping[element.name]; # KeyError: 'DL00'
+            # 2.) control_name = device_mapping[element.name.lower()] # KeyError: 'dl00
+            #control_name = device_mapping[element.name]
+
+        #except KeyError as e:
+        #    raise KeyError(f"Element {element.name} not found in device mapping") from e
+        
+        # need an if statement here because no intersection has been taken yet
+        
+        if element.name.upper() in device_mapping:
+            control_name = device_mapping[element.name.upper()]
+        else:
+            warnings.warn(f"Element {element.name} not found in device mapping")
+            continue
 
         element_variables = get_variables_from_element(
             element, control_name, element_attr_mapping
@@ -175,9 +215,12 @@ def get_variables_from_segment(
 
 def generate_variables_and_mapping(
     segment: Segment,
-    lcls_elements_path: str | None,
-    variable_config_file: str | None,
+    lcls_elements_path: str | None = None,
+    variable_config_file: str | None = None,
 ) -> dict[str, ScalarVariable]:
+    # str | None need to be str | None = None to have the arg be omittable
+    # for convenience of slac users, you can pass nothing other than segment
+    # other facilities need there own similar files.
     """
     Generate LUME variables for a SLAC-style control system from a Cheetah lattice.
 
@@ -217,17 +260,30 @@ def generate_variables_and_mapping(
     """
     if lcls_elements_path is None:
         lcls_elements_path = str(LCLS_ELEMENTS)
+    
+    if variable_config_file is None:
+        variable_config_file = str(SLAC_VARIABLE_CONFIG_FILE)
 
+    # This is fine with the rework of yaml
     with open(variable_config_file, "r") as f:
         element_attr_mapping = yaml.safe_load(f)
 
+    # this format is not the actual mapping cheetah uses. maybe some other backend might
+    # this returns {} 
+    # use this so its fine to keep, since it just maps mad to control name
+    #{"QE02": "QUAD:IN20:441, "QE03": "QUAD:IN20:511"}
+    
     device_name_mapping = get_mad_mapping(lcls_elements_path)
 
+    # but cheetah needs the mapping -> {"qe02": "QUAD:IN20:441, "qe03": "QUAD:IN20:511"}
+    # and the cheetah transformer needsd -> {"QUAD:IN20:441": "qe02", "QUAD:IN20:511" : "qe03"}
     all_vars = get_variables_from_segment(
         segment, device_name_mapping, element_attr_mapping
     )
+    mapping = get_control_mad_mapping(lcls_elements_path)
+    mapping = {k: v.lower() for k, v in mapping.items()}
 
-    return all_vars
+    return all_vars, mapping
 
 
 def split_control_and_observable(
@@ -256,57 +312,3 @@ def split_control_and_observable(
     control_vars = {k: v for k, v in all_vars.items() if not v.read_only}
     observable_vars = {k: v for k, v in all_vars.items() if v.read_only}
     return control_vars, observable_vars
-
-
-def import_from_dotted_path(path: str):
-    """
-    Import and return an object from a dotted module path.
-
-    This utility resolves strings of the form:
-
-        "package.module.ClassName"
-
-    into the corresponding Python object by importing the module
-    and retrieving the named attribute.
-
-    Parameters
-    ----------
-    path : str
-        Fully-qualified dotted path to an importable attribute or class.
-
-    Returns
-    -------
-    Any
-        The imported attribute (typically a class or callable).
-
-    Raises
-    ------
-    ValueError
-        If `path` does not contain both a module and attribute
-        component (i.e., missing a dot separator).
-
-    ModuleNotFoundError
-        If the module portion of the path cannot be imported.
-
-    AttributeError
-        If the requested attribute does not exist in the module.
-
-    Examples
-    --------
-    >>> import_from_dotted_path(
-    ...     "lume.variables.ScalarVariable"
-    ... )
-    <class 'lume.variables.ScalarVariable'>
-
-    Notes
-    -----
-    This function is commonly used when loading configuration from
-    YAML or JSON files where Python classes must be specified as
-    strings and resolved at runtime.
-    """
-    module_path, _, class_name = path.rpartition(".")
-    if not module_path:
-        raise ValueError(f"Expected dotted path 'module.Class', got {path!r}")
-
-    module = importlib.import_module(module_path)
-    return getattr(module, class_name)

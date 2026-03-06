@@ -205,7 +205,24 @@ def get_mad_mapping(fname):
     )
     return mapping
 
-def get_devices_from_lattice(fname, segment):
+def get_control_mad_mapping(fname):
+    """
+    Create a mapping from control system names to element names from a CSV file.
+
+    Args:
+        fname (str): Path to the CSV file containing the mapping.
+
+    """
+    mapping = (
+        pd.read_csv(fname, dtype=str)
+        .set_index("Control System Name")["Element"]
+        .T.to_dict()
+    )
+    return mapping
+
+
+
+def get_lattice_segment_intersection(fname, segment):
     mapping = get_mad_mapping(fname)
     devices_in_lattice = {element.name : mapping[(element.name).upper()]
                     for element in segment.elements
