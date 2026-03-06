@@ -221,12 +221,3 @@ def get_control_mad_mapping(fname):
     return mapping
 
 
-
-def get_lattice_segment_intersection(fname, segment):
-    mapping = get_mad_mapping(fname)
-    devices_in_lattice = {element.name : mapping[(element.name).upper()]
-                    for element in segment.elements
-                    if (element.name).upper() in mapping }
-    return devices_in_lattice
-
-
