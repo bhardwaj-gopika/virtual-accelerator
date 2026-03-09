@@ -13,7 +13,6 @@ class TestCUHXR:
         assert outputs["name"][-1] == "END"
 
     def test_cu_hxr_screen(self):
-        # may be needed to set LCLS_LATTICE env variable to run this test, but should be set in CI already
         model = get_cu_hxr_bmad_model()
 
         # set tracking
