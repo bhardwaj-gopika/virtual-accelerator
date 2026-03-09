@@ -4,7 +4,6 @@ from typing import Any
 from lume_bmad.transformer import BmadTransformer
 from pytao import Tao
 
-# from pmd_beamphysics import ParticleGroup
 from beamphysics.interfaces.bmad import (
     bmad_to_particlegroup_data,
     particlegroup_to_bmad,
