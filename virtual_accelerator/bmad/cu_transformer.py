@@ -4,7 +4,7 @@ from pytao import Tao
 from lume_bmad.utils import get_beam_info, get_particle_group_at_element
 from beamphysics.interfaces.bmad import write_bmad
 from os import getcwd
-
+import numpy as np
 
 class CUBmadTransformer(BmadTransformer):
     """
@@ -74,7 +74,7 @@ class CUBmadTransformer(BmadTransformer):
         element_name = self.control_name_to_bmad[":".join(control_name.split(":")[0:3])]
         device_type = control_name.split(":")[0]  # QUAD, KLYS, etc.
 
-        attr = control_name.split(":")[3]
+        attr = ":".join(control_name.split(":")[3:])
         ele_attr = tao.ele_gen_attribs(element_name)
 
         if device_type == "QUAD":
@@ -102,7 +102,7 @@ class CUBmadTransformer(BmadTransformer):
                     "x",
                     "y",
                     bins=bins,
-                    range=range,
+                    range=np.stack(((-range[0], range[0]), (-range[1], range[1]))),
                 )
                 return H
             elif attr == "Image:ArraySize1_RBV":
@@ -115,8 +115,7 @@ class CUBmadTransformer(BmadTransformer):
         else:
             return ele_attr[attr]
 
-    def get_tao_commands(
-        self, tao: Tao, pvdata: dict[str, Any]) -> list[str]:
+    def get_tao_commands(self, tao: Tao, pvdata: dict[str, Any]) -> list[str]:
         """
         Get Tao commands to set a property of an element in Bmad via Tao. Handle
         mapping control names to element attributes and any necessary unit conversions as needed.
