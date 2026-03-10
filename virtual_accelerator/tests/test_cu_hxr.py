@@ -1,7 +1,7 @@
 import os
-from virtual_accelerator.models.cu_hxr import get_cu_hxr_bmad_model
+from virtual_accelerator.models.cu_hxr import get_cu_hxr_bmad_model, get_cu_hxr_cheetah_model
 
-class TestCUHXR:
+class TestCUHXRBmad:
     def test_cu_hxr_twiss(self):
         model = get_cu_hxr_bmad_model()
 
@@ -31,3 +31,8 @@ class TestCUHXR:
 
         # make sure it changed
         assert not (image == updated_image).all()
+
+class TestCUHXRCheetah:
+    def test_initialization(self):
+        model = get_cu_hxr_cheetah_model()
+
