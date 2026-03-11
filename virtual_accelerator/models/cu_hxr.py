@@ -20,7 +20,7 @@ from virtual_accelerator.bmad.cu_transformer import (
 
 def get_cu_hxr_bmad_model():
     """
-    Get the LUMEBmadModel for the CU_HXR lattice.
+    Get the LUMEBmadModel for the CU_HXR lattice from OTR2 to ENDDMPH_2.
 
     Returns
     -------
@@ -29,10 +29,7 @@ def get_cu_hxr_bmad_model():
     """
 
     LCLS_LATTICE = os.environ["LCLS_LATTICE"]
-    print(f"LCLS_LATTICE: {LCLS_LATTICE}")
-
     init_file = os.path.join(LCLS_LATTICE, "bmad/models/cu_hxr/tao.init")
-
     tao = Tao(f"-init {init_file} -noplot")
 
     control_name_to_element_name = get_epics_to_name_mapping()
@@ -72,6 +69,14 @@ def get_cu_hxr_bmad_model():
     return model
 
 def get_cu_hxr_cheetah_model():
+    """
+    Get the LUMECheetahModel for the CU_HXR lattice from GUN to OTR2.
+
+    Returns
+    -------
+    LUMECheetahModel
+        Instance of the LUMECheetahModel for the CU_HXR lattice.
+    """
     # Get path to beam distributions
     beam_dist = os.environ.get(
         'BEAM_DISTRIBUTION',
