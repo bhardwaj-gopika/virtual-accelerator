@@ -35,7 +35,7 @@ class CUBmadTransformer(BmadTransformer):
             {
                 "OTR2": {
                     "bins": 1024,
-                    "resolution": 0.1, # mm/pixel
+                    "resolution": 10, # um/pixel
                 }
             }
 
@@ -102,7 +102,7 @@ class CUBmadTransformer(BmadTransformer):
         elif device_type == "OTRS":
             if attr == "Image:ArrayData":
                 bins = self.screen_attributes[element_name]["bins"]
-                resolution = self.screen_attributes[element_name]["resolution"]
+                resolution = self.screen_attributes[element_name]["resolution"]*1e-6 # um / pixel
                 range = bins * resolution / 2
 
                 beam = get_particle_group_at_element(tao, element_name)

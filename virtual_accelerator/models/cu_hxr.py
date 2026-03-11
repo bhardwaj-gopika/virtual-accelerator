@@ -51,7 +51,7 @@ def get_cu_hxr_bmad_model():
     screen_attributes = {
         "OTR4": {
             "bins": np.array([1024, 1024]),  # number of pixels in x and y
-            "resolution": 0.01,  # mm/pixel
+            "resolution": 10,  # um/pixel
         }
     }  ## TODO replace with correct values
 
