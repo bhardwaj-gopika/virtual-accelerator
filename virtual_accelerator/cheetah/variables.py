@@ -53,7 +53,7 @@ def get_variables_from_segment(
     element_attr_mapping = element_attr_mapping or get_element_attr_mapping()
 
     for element in segment.elements:
-        if (type(element).__name__ == 'Drift'): 
+        if type(element).__name__ in ["Drift","Marker","Cavity"]: 
             continue
         elif element.name.upper() in device_mapping: 
             control_name = device_mapping[element.name.upper()]
