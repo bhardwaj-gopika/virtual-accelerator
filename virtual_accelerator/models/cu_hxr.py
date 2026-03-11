@@ -1,11 +1,13 @@
 import os
 import numpy as np
+from pytao import Tao
 
 from lume_bmad.model import LUMEBmadModel
 from lume.variables import NDVariable
 from lume_cheetah import LUMECheetahModel,CheetahSimulator
 from virtual_accelerator.cheetah.transformer import SLACCheetahTransformer
 from virtual_accelerator.cheetah.variables import get_variables_from_segment
+from virtual_accelerator.bmad.variables import get_variables_from_tao
 from virtual_accelerator.utils.variables import get_epics_to_name_mapping, split_control_and_observable
 from cheetah.accelerator import Segment
 from cheetah.particles import ParticleBeam
@@ -13,9 +15,6 @@ import torch
 
 from virtual_accelerator.bmad.cu_transformer import (
     CUBmadTransformer,
-)
-from virtual_accelerator.bmad.utils import (
-    import_control_variables,
 )
 
 
@@ -34,14 +33,16 @@ def get_cu_hxr_bmad_model():
 
     init_file = os.path.join(LCLS_LATTICE, "bmad/models/cu_hxr/tao.init")
 
-    input_fname = os.path.join(os.path.dirname(__file__), "../bmad/hxr_input.yaml")
+    tao = Tao(f"-init {init_file} -noplot")
 
-    control_vars, control_name_to_bmad = import_control_variables(input_fname)
-    output_vars = {} # import_output_variables("hxr_output.yaml")
+    control_name_to_element_name = get_epics_to_name_mapping()
+    variables = get_variables_from_tao(tao)
+
+    # Define the controllable and observable variables
+    control_variables, observable_variables = split_control_and_observable(variables)
 
     # handle OTR2
-    control_name_to_bmad["OTRS:IN20:711"] = "OTR4"
-    output_vars["OTRS:IN20:711:Image:ArrayData"] = NDVariable(
+    control_variables["OTRS:IN20:711:Image:ArrayData"] = NDVariable(
         name="OTRS:IN20:711:Image:ArrayData",
         unit="",
         read_only=True,
@@ -55,13 +56,13 @@ def get_cu_hxr_bmad_model():
     }  ## TODO replace with correct values
 
     transformer = CUBmadTransformer(
-        control_name_to_bmad=control_name_to_bmad, screen_attributes=screen_attributes
+        control_name_to_bmad=control_name_to_element_name, screen_attributes=screen_attributes
     )
 
     model = LUMEBmadModel(
-        init_file=init_file,
-        control_variables=control_vars,
-        output_variables=output_vars,
+        tao=tao,
+        control_variables=control_variables,
+        output_variables=observable_variables,
         transformer=transformer,
         dump_locations=["OTR4"],
     )
@@ -98,10 +99,10 @@ def get_cu_hxr_cheetah_model():
     )
 
     # get control system device to cheetah mapping
-    control_name_to_cheetah = {k: v.lower() for k,v in get_epics_to_name_mapping().items()}
+    control_name_to_element_name = {k: v.lower() for k,v in get_epics_to_name_mapping().items()}
 
     # Create transformer that handles maps get/set calls
-    transformer = SLACCheetahTransformer(control_name_to_cheetah=control_name_to_cheetah)
+    transformer = SLACCheetahTransformer(control_name_to_cheetah=control_name_to_element_name)
 
     # Get supported control system variables
     # for the model

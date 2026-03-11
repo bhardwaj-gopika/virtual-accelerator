@@ -1,4 +1,3 @@
-import os
 from virtual_accelerator.models.cu_hxr import get_cu_hxr_bmad_model, get_cu_hxr_cheetah_model
 
 class TestCUHXRBmad:
@@ -23,7 +22,7 @@ class TestCUHXRBmad:
         assert image.shape == (1024, 1024)
 
         # set some control variables
-        model.set({"QUAD:IN20:631:BDES": 0.0})
+        model.set({"QUAD:IN20:631:BCTRL": 0.0})
 
         # get updated OTR4 image
         updated_image = model.get(["OTRS:IN20:711:Image:ArrayData"])["OTRS:IN20:711:Image:ArrayData"]
@@ -35,4 +34,6 @@ class TestCUHXRBmad:
 class TestCUHXRCheetah:
     def test_initialization(self):
         model = get_cu_hxr_cheetah_model()
+        
+        assert model.get(["OTRS:IN20:541:Image:ArrayData"])["OTRS:IN20:541:Image:ArrayData"].shape == (1392, 1040)
 
