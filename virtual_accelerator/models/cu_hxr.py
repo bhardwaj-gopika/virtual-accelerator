@@ -38,7 +38,7 @@ def get_cu_hxr_bmad_model():
     # Define the controllable and observable variables
     control_variables, observable_variables = split_control_and_observable(variables)
 
-    # handle OTR2
+    # handle OTR4
     control_variables["OTRS:IN20:711:Image:ArrayData"] = NDVariable(
         name="OTRS:IN20:711:Image:ArrayData",
         unit="",

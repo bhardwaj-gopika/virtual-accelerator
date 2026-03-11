@@ -88,7 +88,7 @@ class CUBmadTransformer(BmadTransformer):
                 return -ele_attr["B1_GRADIENT"] * ele_attr["L"] * 10
         elif device_type == "SOLN":
             if attr in ["BCTRL", "BACT", "BDES"]:
-                return ele_attr["KS"] * ele_attr["L"] * 10 # TODO confirm this conversion
+                return ele_attr["BS_FIELD"] * 10 # TODO confirm this conversion
         elif device_type in ["KLYS", "ACCL"]:
             if attr in ["ENLD", "ADES"]:
                 tao.ele_control_var(element_name)
@@ -180,7 +180,7 @@ class CUBmadTransformer(BmadTransformer):
             elif device_type == "SOLN":
                 if attr == "BCTRL" or attr == "BDES":
                     bmad_value = -0.1 * value
-                    bmad_attr = "KS"
+                    bmad_attr = "BS_FIELD"
             elif device_type == "KLYS":
                 bmad_value = value
                 bmad_attr = klys_attr_to_bmad[attr]
