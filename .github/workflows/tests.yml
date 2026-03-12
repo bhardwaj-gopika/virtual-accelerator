@@ -1,4 +1,3 @@
-
 name: Run tests
 
 on:
@@ -28,6 +27,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install libtao
+        run: conda install -y -c conda-forge libtao
       - name: Checkout lcls-lattice
         uses: actions/checkout@v4
         with:
@@ -41,5 +42,6 @@ jobs:
       - name: Run tests
         env:
           LCLS_LATTICE: ${{ github.workspace }}/lcls-lattice
+          LD_LIBRARY_PATH: ${{ env.CONDA }}/../../lib:${{ env.LD_LIBRARY_PATH }}
         run: |
           uv run pytest virtual_accelerator/tests
