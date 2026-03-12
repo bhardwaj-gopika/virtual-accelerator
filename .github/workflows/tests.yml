@@ -37,4 +37,4 @@ jobs:
         env:
           LCLS_LATTICE: ${{ github.workspace }}/lcls-lattice
         run: |
-          uv run pytest
+          uv run pytest virtual_accelerator/tests
