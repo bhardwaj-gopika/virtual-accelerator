@@ -25,7 +25,6 @@ classifiers = [
 dependencies = [
     "pandas",
     "torch",
-    "openpmd-beamphysics",
     "lume-base @ git+https://github.com/slaclab/lume-base@main",
     "lume-torch @ git+https://github.com/lume-science/lume-torch@main",
     "lume-bmad @ git+https://github.com/lume-science/lume-bmad@main",
