@@ -8,7 +8,11 @@ from lume_cheetah import LUMECheetahModel,CheetahSimulator
 from virtual_accelerator.cheetah.transformer import SLACCheetahTransformer
 from virtual_accelerator.cheetah.variables import get_variables_from_segment
 from virtual_accelerator.bmad.variables import get_variables_from_tao
-from virtual_accelerator.utils.variables import get_epics_to_name_mapping, split_control_and_observable
+from virtual_accelerator.utils.variables import (
+    get_epics_to_name_mapping,
+    split_control_and_observable,
+    get_cu_hxr_screen_variables
+    )
 from cheetah.accelerator import Segment
 from cheetah.particles import ParticleBeam
 import torch
@@ -37,21 +41,9 @@ def get_cu_hxr_bmad_model():
 
     # Define the controllable and observable variables
     control_variables, observable_variables = split_control_and_observable(variables)
-
-    # handle OTR4
-    control_variables["OTRS:IN20:711:Image:ArrayData"] = NDVariable(
-        name="OTRS:IN20:711:Image:ArrayData",
-        unit="",
-        read_only=True,
-        shape=(1024, 1024),
-    )
-    screen_attributes = {
-        "OTR4": {
-            "bins": np.array([1024, 1024]),  # number of pixels in x and y
-            "resolution": 10,  # um/pixel
-        }
-    }  ## TODO replace with correct values
-
+    # handle Profile Monitors
+    control_variables, screen_attributes = get_cu_hxr_screen_variables(control_variables, ["OTR4"])
+    
     transformer = CUBmadTransformer(
         control_name_to_bmad=control_name_to_element_name, screen_attributes=screen_attributes
     )
