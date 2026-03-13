@@ -30,8 +30,7 @@ dependencies = [
     "lume-bmad @ git+https://github.com/lume-science/lume-bmad@main",
     "lume-cheetah @ git+https://github.com/pluflou/lume-cheetah@patch-1",
     "lume-pva @ git+https://github.com/lume-science/lume-pva@main",
-    "lume-impact @ git+https://github.com/ChristopherMayes/lume-impact",
-    "distgen @ git+https://github.com/ColwynGulliford/distgen"
+    "lume-impact @ git+https://github.com/ChristopherMayes/lume-impact"
 ]
 
 [project.urls]
