@@ -10,8 +10,8 @@ class TestCUHXRBmad:
 
         outputs = model.get(["a.beta", "b.beta", "name"])
 
-        assert len(outputs["a.beta"]) == 3219
-        assert len(outputs["b.beta"]) == 3219
+        assert len(outputs["a.beta"]) == 3322
+        assert len(outputs["b.beta"]) == 3322
         assert outputs["name"][0] == "BEGINNING"
         assert outputs["name"][-1] == "END"
 
