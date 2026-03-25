@@ -18,5 +18,6 @@ contents of the lcls-lattice repo https://github.com/slaclab/lcls-lattice.
 The Cu Injector model is present in .submodules/repo.
 To pull latest changes from the Cu Inj repo
 
-``` git subtree pull --prefix=.submodules/repo https://github.com/slaclab/lcls_cu_injector_ml_model main --squash
+```
+git subtree pull --prefix=.submodules/repo https://github.com/slaclab/lcls_cu_injector_ml_model main --squash
 ```
