@@ -282,7 +282,10 @@ class ScreenImageVariable(CheetahReadOnlyNDVariable):
     element_attribute: str = "reading"
 
     def _get(self, simulator):
-        return super()._get(simulator).T * 65535
+        # Transpose only the image axes: `reading` is (..., y, x) with arbitrary
+        # leading batch dims (one per vectorized scan setting), and `.T` would
+        # reverse *all* dims, scrambling batched readings into (x, y, ...).
+        return super()._get(simulator).transpose(-2, -1) * 65535
 
 
 class ScreenImageArraySizeVariable(CheetahReadOnlyScalarVariable):
