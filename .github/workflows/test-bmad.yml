@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@4f1f4aec02e41874fa0262ea8ff5172d7978ad1e
         with:
           repository: slaclab/lcls-lattice
-          ref: temp_remove_fixers
+          ref: master
           path: lcls-lattice
       - name: Checkout facet2-lattice
         uses: actions/checkout@4f1f4aec02e41874fa0262ea8ff5172d7978ad1e
