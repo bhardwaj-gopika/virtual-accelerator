@@ -11,10 +11,10 @@ inputs:
     default: master
   facet2-lattice-repository:
     description: facet2-lattice repository (owner/name)
-    default: pluflou/facet2-lattice
+    default: slaclab/facet2-lattice
   facet2-lattice-ref:
     description: facet2-lattice ref (branch, tag, or SHA)
-    default: fix_unquoted_integers_in_namelist
+    default: master
 
 runs:
   using: composite
