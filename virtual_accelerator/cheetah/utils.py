@@ -13,6 +13,19 @@ import pandas as pd
 LCLS_ELEMENTS = os.path.join(Path(__file__).parent.resolve(), "lcls_elements.csv")
 
 
+def _read_lcls_elements(fname: str) -> pd.DataFrame:
+    """Read the LCLS elements CSV, tolerating an optional category header row.
+
+    Newer lattice exports prepend a grouping row (e.g. ``EPICS Channel Access
+    Device``) above the real column header. Detect that case and use the second
+    row as the header instead.
+    """
+    frame = pd.read_csv(fname, dtype=str)
+    if "Element" not in frame.columns:
+        frame = pd.read_csv(fname, dtype=str, header=1)
+    return frame
+
+
 def get_mad_control_mapping(fname: str | None = None):
     """
     Create a mapping from MAD element names to control-system names.
@@ -27,9 +40,7 @@ def get_mad_control_mapping(fname: str | None = None):
     if fname is None:
         fname = str(LCLS_ELEMENTS)
     mapping = (
-        pd.read_csv(fname, dtype=str)
-        .set_index("Element")["Control System Name"]
-        .to_dict()
+        _read_lcls_elements(fname).set_index("Element")["Control System Name"].to_dict()
     )
     return mapping
 
@@ -50,7 +61,7 @@ def get_control_mad_mapping(fname: str | None = None):
         fname = str(LCLS_ELEMENTS)
 
     mapping = (
-        pd.read_csv(fname, dtype=str)
+        _read_lcls_elements(fname)
         .set_index("Control System Name")["Element"]
         .T.to_dict()
     )
