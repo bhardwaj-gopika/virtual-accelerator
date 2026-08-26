@@ -1,4 +1,3 @@
-import importlib.util
 import numpy as np
 from pathlib import Path
 
@@ -9,6 +8,7 @@ from lume.exceptions import ReadOnlyError
 from virtual_accelerator.tests.dependency_profiles import (
     HAS_BMAD_DEPS,
     HAS_CHEETAH_DEPS,
+    HAS_IMPACT_DEPS,
     HAS_LCLS_LATTICE,
 )
 from virtual_accelerator.models.cu_hxr import (
@@ -42,13 +42,6 @@ def _load_cu_hxr_screen_config():
         return yaml.safe_load(config_file)
 
 
-def has_module(name: str) -> bool:
-    return importlib.util.find_spec(name) is not None
-
-
-HAS_IMPACT_DEPS = has_module("impact") and has_module("distgen")
-
-
 def _has_impact_executable() -> bool:
     if not HAS_IMPACT_DEPS:
         return False
@@ -64,17 +57,12 @@ def _has_impact_executable() -> bool:
 
 
 HAS_IMPACT_EXECUTABLE = _has_impact_executable()
+IMPACT_SKIP_REASON = (
+    "requires impact optional dependencies, LCLS_LATTICE, "
+    "and ImpactTexe executable (IMPACTT_BIN)"
+)
 
-IMPACT_MISSING_REQUIREMENTS = []
-if not HAS_IMPACT_DEPS:
-    IMPACT_MISSING_REQUIREMENTS.append("impact optional dependencies")
-if not HAS_LCLS_LATTICE:
-    IMPACT_MISSING_REQUIREMENTS.append("LCLS_LATTICE")
-if not HAS_IMPACT_EXECUTABLE:
-    IMPACT_MISSING_REQUIREMENTS.append("ImpactTexe executable (IMPACTT_BIN)")
-IMPACT_SKIP_REASON = "requires " + ", ".join(IMPACT_MISSING_REQUIREMENTS)
-
-IMPACT_SCREEN_PV_ATTRS = (
+SCREEN_PV_ATTRS = (
     "Image:ArrayData",
     "Image:ArraySize1_RBV",
     "Image:ArraySize0_RBV",
@@ -116,7 +104,7 @@ class TestCUHXRBmad:
         model = get_cu_hxr_bmad_model(
             end_element="OTR4", track_beam=True, custom_beam_path=TEST_BEAM_PATH
         )
-        assert_screen_image_pvs_match_tao_lattice(model)
+        assert_screen_image_pvs_match_tao_lattice(model, screen_attrs=SCREEN_PV_ATTRS)
 
         # test getting all of the supported variables to ensure no errors with screen variable setup
         _ = model.get(list(model.supported_variables))
@@ -212,7 +200,7 @@ class TestCUHXRBmad:
         model = get_cu_hxr_bmad_model(
             custom_beam_path=TEST_BEAM_PATH, end_element="OTR4", track_beam=True
         )
-        assert_screen_image_pvs_match_tao_lattice(model)
+        assert_screen_image_pvs_match_tao_lattice(model, screen_attrs=SCREEN_PV_ATTRS)
 
 
 class TestCUHXRCheetah:
@@ -295,7 +283,10 @@ class TestCUHXRCheetah:
 
     def test_screen_pvs_match_cheetah_segment(self):
         model = get_cu_hxr_cheetah_model()
-        assert_screen_image_pvs_match_cheetah_segment(model)
+        assert_screen_image_pvs_match_cheetah_segment(
+            model,
+            screen_attrs=SCREEN_PV_ATTRS,
+        )
 
     def test_bpm_pvs_have_expected_suffixes(self):
         model = get_cu_hxr_cheetah_model()
@@ -322,12 +313,16 @@ class TestCUHXRCheetah:
         )
 
 
-@pytest.mark.requires_lcls_lattice
-@pytest.mark.skipif(
-    not HAS_IMPACT_DEPS or not HAS_LCLS_LATTICE or not HAS_IMPACT_EXECUTABLE,
-    reason=IMPACT_SKIP_REASON,
-)
 class TestCUHXRImpact:
+    pytestmark = [
+        pytest.mark.requires_impact,
+        pytest.mark.requires_lcls_lattice,
+        pytest.mark.skipif(
+            not HAS_IMPACT_DEPS or not HAS_LCLS_LATTICE or not HAS_IMPACT_EXECUTABLE,
+            reason=IMPACT_SKIP_REASON,
+        ),
+    ]
+
     @pytest.fixture
     def model(self):
         return get_cu_inj_impact_model(n_particles=100)
@@ -397,7 +392,7 @@ class TestCUHXRImpact:
         assert_screen_image_pvs_in_supported_variables(
             model=model,
             screen_elements=screen_elements,
-            screen_attrs=IMPACT_SCREEN_PV_ATTRS,
+            screen_attrs=SCREEN_PV_ATTRS,
         )
 
     def test_bctrl_roundtrip_get_set(self, model):
