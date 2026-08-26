@@ -1,3 +1,4 @@
+import importlib.util
 import numpy as np
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from virtual_accelerator.tests.dependency_profiles import (
     HAS_LCLS_LATTICE,
 )
 from virtual_accelerator.models.cu_hxr import (
+    get_cu_inj_impact_model,
     get_cu_hxr_bmad_model,
     get_cu_hxr_cheetah_model,
 )
@@ -22,9 +24,11 @@ from virtual_accelerator.tests._bmad_model_test_utils import (
     assert_bmad_model_initialization,
     assert_bmad_model_twiss_outputs,
     assert_bmad_model_track_beam_custom_path,
+    assert_magnet_pvs_match_lattice_elements,
     assert_magnet_pvs_match_cheetah_segment,
     assert_magnet_pvs_match_tao_lattice,
     assert_roundtrip_pv_get_set,
+    assert_screen_image_pvs_in_supported_variables,
     assert_screen_image_pvs_match_tao_lattice,
 )
 
@@ -36,6 +40,60 @@ CU_HXR_PROFMON_CONFIG_PATH = (
 def _load_cu_hxr_screen_config():
     with CU_HXR_PROFMON_CONFIG_PATH.open("r", encoding="utf-8") as config_file:
         return yaml.safe_load(config_file)
+
+
+def has_module(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+HAS_IMPACT_DEPS = has_module("impact") and has_module("distgen")
+
+
+def _has_impact_executable() -> bool:
+    if not HAS_IMPACT_DEPS:
+        return False
+
+    from impact import tools
+
+    try:
+        tools.find_executable(exename="ImpactTexe", envname="IMPACTT_BIN")
+    except Exception:
+        return False
+
+    return True
+
+
+HAS_IMPACT_EXECUTABLE = _has_impact_executable()
+
+IMPACT_MISSING_REQUIREMENTS = []
+if not HAS_IMPACT_DEPS:
+    IMPACT_MISSING_REQUIREMENTS.append("impact optional dependencies")
+if not HAS_LCLS_LATTICE:
+    IMPACT_MISSING_REQUIREMENTS.append("LCLS_LATTICE")
+if not HAS_IMPACT_EXECUTABLE:
+    IMPACT_MISSING_REQUIREMENTS.append("ImpactTexe executable (IMPACTT_BIN)")
+IMPACT_SKIP_REASON = "requires " + ", ".join(IMPACT_MISSING_REQUIREMENTS)
+
+IMPACT_SCREEN_PV_ATTRS = (
+    "Image:ArrayData",
+    "Image:ArraySize1_RBV",
+    "Image:ArraySize0_RBV",
+    "RESOLUTION",
+)
+
+
+def _get_impact_lattice_element_metadata(model):
+    from virtual_accelerator.impact.variables import get_normalized_element_type
+
+    impact = model.impact_model.simulator
+    element_names = []
+    element_types = []
+
+    for element_name in impact.ele:
+        element_names.append(element_name)
+        element_types.append(get_normalized_element_type(impact, element_name))
+
+    return element_names, element_types
 
 
 @pytest.mark.requires_bmad
@@ -262,3 +320,97 @@ class TestCUHXRCheetah:
             element_type,
             excluded_elements=excluded_elements,
         )
+
+
+@pytest.mark.requires_lcls_lattice
+@pytest.mark.skipif(
+    not HAS_IMPACT_DEPS or not HAS_LCLS_LATTICE or not HAS_IMPACT_EXECUTABLE,
+    reason=IMPACT_SKIP_REASON,
+)
+class TestCUHXRImpact:
+    @pytest.fixture
+    def model(self):
+        return get_cu_inj_impact_model(n_particles=100)
+
+    def test_initialization(self, model):
+        writable_control_variables = {
+            name
+            for name, variable in model.supported_variables.items()
+            if not getattr(variable, "read_only", True)
+        }
+
+        assert len(model.supported_variables) > 0
+        assert len(writable_control_variables) > 0
+
+        # Smoke test that reading all variables works after initialization.
+        _ = model.get(list(model.supported_variables))
+
+    def test_bact_readback_is_not_writable(self, model):
+        bact_pv = next(
+            name for name in model.supported_variables if name.endswith(":BACT")
+        )
+
+        with pytest.raises(ReadOnlyError, match="is read-only"):
+            model.set({bact_pv: 0.0})
+
+    def test_screen_image_outputs(self, model):
+        image_pv = next(
+            name
+            for name in model.supported_variables
+            if name.endswith(":Image:ArrayData")
+        )
+        base_pv = image_pv.rsplit(":", 2)[0]
+
+        image = np.asarray(model.get(image_pv))
+        assert image.ndim == 2
+        assert image.size > 0
+        assert np.isfinite(image).all()
+        assert image.min() >= 0.0
+        assert image.max() <= 1.0
+
+        resolution = float(model.get(f"{base_pv}:RESOLUTION"))
+        size0 = int(model.get(f"{base_pv}:Image:ArraySize0_RBV"))
+        size1 = int(model.get(f"{base_pv}:Image:ArraySize1_RBV"))
+
+        assert image.shape == (size1, size0)
+        assert resolution > 0.0
+
+    def test_quadrupole_pvs_match_impact_lattice(self, model):
+        element_names, element_types = _get_impact_lattice_element_metadata(model)
+
+        assert_magnet_pvs_match_lattice_elements(
+            model=model,
+            element_key="Quadrupole",
+            element_names=element_names,
+            element_keys=element_types,
+        )
+
+    def test_screen_pvs_match_impact_lattice(self, model):
+        element_names, element_types = _get_impact_lattice_element_metadata(model)
+        screen_elements = [
+            element_name
+            for element_name, element_type in zip(element_names, element_types)
+            if element_type == "Screen"
+        ]
+
+        assert screen_elements
+        assert_screen_image_pvs_in_supported_variables(
+            model=model,
+            screen_elements=screen_elements,
+            screen_attrs=IMPACT_SCREEN_PV_ATTRS,
+        )
+
+    def test_bctrl_roundtrip_get_set(self, model):
+        bctrl_pv = next(
+            name
+            for name, variable in model.supported_variables.items()
+            if name.endswith(":BCTRL") and not getattr(variable, "read_only", True)
+        )
+
+        current_value = float(model.get(bctrl_pv))
+        target_value = current_value + 0.001
+        model.set({bctrl_pv: target_value})
+        assert np.isclose(float(model.get(bctrl_pv)), target_value)
+
+        # Reset to original value to avoid side effects across tests.
+        model.set({bctrl_pv: current_value})
