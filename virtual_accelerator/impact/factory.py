@@ -1,0 +1,76 @@
+from impact import Impact
+from distgen import Generator
+import os
+from pathlib import Path
+import yaml
+from dataclasses import dataclass
+
+from impact.model.distgen.distgen_impact_model import LUMEDistgenImpactModel
+from virtual_accelerator.utils.variables import get_element_attr_mapping, get_element_name_to_base_pv_mapping
+from virtual_accelerator.impact.variables import get_variables
+
+@dataclass(frozen=True)
+class ImpactModelSpec:
+    lattice_env_var: str
+    distgen_file: str
+    n_particles: int
+    profmon_config_filename: str
+    impact_file: str = None
+    impact_yaml_file: str = None
+    numprocs: int = 1
+    space_charge: bool = False
+
+
+def get_impact_and_distgen(spec: ImpactModelSpec):
+    # get files
+    lattice_root = os.environ[spec.lattice_env_var]
+    distgen_file = os.path.join(lattice_root, spec.distgen_file)
+
+    # either an impact file or an impact YAML file must be provided
+    impact_file = os.path.join(lattice_root, spec.impact_file) if spec.impact_file else None
+    impact_yaml_file = os.path.join(lattice_root, spec.impact_yaml_file) if spec.impact_yaml_file else None
+
+    if impact_file is None and impact_yaml_file is None:
+        raise ValueError("Either an impact file or an impact YAML file must be provided")
+
+    # if an impact YAML file is provided, use it to create the Impact object
+    if impact_yaml_file is not None:
+        impact = Impact.from_yaml(impact_yaml_file)
+    else:
+        impact = Impact(impact_file)
+
+    distgen = Generator(distgen_file)
+
+    return impact, distgen
+
+def build_impact_model(spec: ImpactModelSpec):
+    impact, distgen = get_impact_and_distgen(spec)
+
+    # set the number of particles and other parameters
+    impact.header["Np"] = spec.n_particles
+    impact.numprocs = spec.numprocs
+    impact.header["Bcurr"] = 1 if spec.space_charge else 0
+    impact.run()
+
+    distgen["n_particle"] = spec.n_particles
+
+    model = LUMEDistgenImpactModel.from_objects(distgen, impact)
+
+    # register additional actions to lume model
+    element_name_to_base_pv_mapping = get_element_name_to_base_pv_mapping(os.environ[spec.lattice_env_var])
+
+    config_path = Path(__file__).parent / ".." / "utils" / spec.profmon_config_filename
+    with config_path.open("r", encoding="utf-8") as f:
+        screen_config_dict = yaml.safe_load(f)
+
+    action_variables = get_variables(
+        impact,
+        get_element_attr_mapping(), 
+        screen_config_dict,
+        element_name_to_base_pv_mapping
+    )
+
+    for var in action_variables:
+        model.register_impact_action_variable(var)
+
+    return model

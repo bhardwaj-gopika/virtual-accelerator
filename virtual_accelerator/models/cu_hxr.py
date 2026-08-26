@@ -159,3 +159,20 @@ def get_cu_hxr_cheetah_model(n_particles: int = 1000):
     )
 
     return model
+
+
+def get_cu_inj_impact_model(n_particles: int = 100):
+    from virtual_accelerator.impact.factory import ImpactModelSpec, build_impact_model
+
+    spec = ImpactModelSpec(
+        lattice_env_var="LCLS_LATTICE",
+        distgen_file="distgen/models/cu_inj/v0/distgen.yaml",
+        impact_yaml_file="impact/models/cu_inj/v0/ImpactT.yaml",
+        profmon_config_filename="cu_hxr_profmon_info.yaml",
+        n_particles=n_particles,
+        numprocs=1,
+        space_charge=False,
+    )
+    model = build_impact_model(spec)
+
+    return model
