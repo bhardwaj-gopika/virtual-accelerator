@@ -313,7 +313,7 @@ class TestCUHXRCheetah:
         )
 
 
-class TestCUHXRImpact:
+class TestCUInjImpact:
     pytestmark = [
         pytest.mark.requires_impact,
         pytest.mark.requires_lcls_lattice,

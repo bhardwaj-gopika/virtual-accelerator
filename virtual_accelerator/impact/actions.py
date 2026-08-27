@@ -10,8 +10,22 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class ImpactGroupVariable(ScalarVariable, WritableActionMixin):
+    """Base class for group variables in the Impact simulator."""
+
+    group_name: str
+    group_key: str
+
+    def _get(self, simulator: Impact) -> Any:
+        return simulator[self.group_name][self.group_key]
+
+    def _set(self, simulator: Impact, value: Any) -> None:
+        simulator[self.group_name][self.group_key] = value
+
+
 class ImpactScalarVariable(ScalarVariable):
     """Base class for scalar variables in the Impact simulator."""
+
     element_name: str
 
     def _get_ele_attr(self, simulator: Impact) -> Any:
@@ -20,9 +34,12 @@ class ImpactScalarVariable(ScalarVariable):
     def _set_ele_attr(self, simulator: Impact, attribute_name: str, value: Any) -> None:
         simulator.ele[self.element_name][attribute_name] = value
 
+
 class ImpactEnumVariable(EnumVariable):
     """Base class for enum variables in the Impact simulator."""
+
     element_name: str
+
 
 class _ReadbackFromControlMixin(ReadOnlyActionMixin):
     """Common readback behavior for variables that share control get logic."""
@@ -43,11 +60,13 @@ class _QuadrupoleGradientVariable(ImpactScalarVariable):
     def _get_bctrl_value(self, simulator: Impact) -> Any:
         ele_attr = self._get_ele_attr(simulator)
         return -ele_attr["b1_gradient"] * ele_attr["L_effective"] * 10
-    
+
     def _set_bctrl_value(self, simulator: Impact, value: Any) -> None:
         ele_attr = self._get_ele_attr(simulator)
-        self._set_ele_attr(simulator, "b1_gradient", -value / (ele_attr["L_effective"] * 10))
-        
+        self._set_ele_attr(
+            simulator, "b1_gradient", -value / (ele_attr["L_effective"] * 10)
+        )
+
 
 class QuadrupoleBCTRLVariable(_QuadrupoleGradientVariable, WritableActionMixin):
     """Action that operates on the BCTRL/BDES property of Quadrupoles"""
@@ -64,7 +83,6 @@ class QuadrupoleBCTRLVariable(_QuadrupoleGradientVariable, WritableActionMixin):
 
 class QuadrupoleBACTVariable(_ReadbackFromControlMixin, QuadrupoleBCTRLVariable):
     """Action that operates on the BACT property of Quadrupoles"""
-
 
 
 class StatusVariable(ImpactScalarVariable, ReadOnlyActionMixin):

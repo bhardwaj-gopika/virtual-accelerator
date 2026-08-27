@@ -3,7 +3,12 @@ from typing import Any
 from impact import Impact
 from lume.variables import Variable
 from virtual_accelerator.impact import actions as impact_actions
-from virtual_accelerator.impact.screen_actions import ScreenSpec, ScreenImageVariable, ScreenResolutionVariable, ScreenImageShapeVariable
+from virtual_accelerator.impact.screen_actions import (
+    ScreenSpec,
+    ScreenImageVariable,
+    ScreenResolutionVariable,
+    ScreenImageShapeVariable,
+)
 
 import logging
 
@@ -11,6 +16,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 SUPPORTED_ELEMENT_TYPES = {"quadrupole", "write_beam", "solrf"}
+
 
 def get_normalized_element_type(impact: Impact, element_name):
     element = impact.ele[element_name]
@@ -22,6 +28,7 @@ def get_normalized_element_type(impact: Impact, element_name):
 
     return element_type
 
+
 def get_all_element_types(impact: Impact):
     element_dict = impact.ele
 
@@ -30,8 +37,8 @@ def get_all_element_types(impact: Impact):
         if element_dict[name]["type"] not in SUPPORTED_ELEMENT_TYPES:
             element_dict.pop(name)
 
-
     return {name: get_normalized_element_type(impact, name) for name in element_dict}
+
 
 def get_variables(
     impact: Impact,
@@ -127,7 +134,6 @@ def create_variables_from_element(
         variables.append(variable)
 
     return variables
-
 
 
 def get_screen_variables(
