@@ -12,6 +12,7 @@ from virtual_accelerator.tests.dependency_profiles import (
     HAS_LCLS_LATTICE,
 )
 from virtual_accelerator.models.cu_hxr import (
+    IMPACT_GROUP_PV_MAPPING,
     get_cu_inj_impact_model,
     get_cu_hxr_bmad_model,
     get_cu_hxr_cheetah_model,
@@ -339,6 +340,39 @@ class TestCUInjImpact:
 
         # Smoke test that reading all variables works after initialization.
         _ = model.get(list(model.supported_variables))
+
+    def test_group_actions_are_registered_and_writable(self, model):
+        from virtual_accelerator.impact.actions import ImpactGroupVariable
+
+        expected_group_pvs = {
+            group_config["pv"] for group_config in IMPACT_GROUP_PV_MAPPING.values()
+        }
+        missing_group_pvs = sorted(expected_group_pvs - set(model.supported_variables))
+        assert not missing_group_pvs
+
+        for group_name, group_config in IMPACT_GROUP_PV_MAPPING.items():
+            group_pv = group_config["pv"]
+            group_variable = model.supported_variables[group_pv]
+
+            assert isinstance(group_variable, ImpactGroupVariable)
+            assert not getattr(group_variable, "read_only", True)
+            assert np.isclose(group_variable.scale, group_config.get("scale", 1.0))
+
+            simulator_group_name = group_name.removeprefix("group:")
+            simulator = model.impact_model.simulator
+            assert simulator_group_name in simulator
+            assert group_variable.group_key in simulator[simulator_group_name]
+
+        # Use one representative mapped PV for roundtrip set/get behavior.
+        _, test_group_config = next(iter(IMPACT_GROUP_PV_MAPPING.items()))
+        test_group_pv = test_group_config["pv"]
+        original_value = float(model.get(test_group_pv))
+        updated_value = original_value + 1e-4
+        model.set({test_group_pv: updated_value})
+        assert np.isclose(float(model.get(test_group_pv)), updated_value)
+
+        # Reset to original value to avoid side effects across tests.
+        model.set({test_group_pv: original_value})
 
     def test_bact_readback_is_not_writable(self, model):
         bact_pv = next(

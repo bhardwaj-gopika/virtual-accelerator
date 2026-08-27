@@ -1,6 +1,16 @@
+from copy import copy
 import os
 
 from lume.staged_model import StagedModel
+
+IMPACT_GROUP_PV_MAPPING = {
+    "group:L0A_phase": {"pv": "ACCL:IN20:300:L0A_PDES"},
+    "group:L0B_phase": {"pv": "ACCL:IN20:400:L0B_PDES"},
+    "group:L0A_scale": {"pv": "ACCL:IN20:300:L0A_ADES", "scale": 1e6},
+    "group:L0B_scale": {"pv": "ACCL:IN20:400:L0B_ADES", "scale": 1e6},
+    "group:GUN_phase": {"pv": "GUN:IN20:1:GN1_PDES"},
+    "group:GUN_scale": {"pv": "GUN:IN20:1:GN1_ADES", "scale": 1e6},
+}
 
 
 def get_cu_hxr_bmad_model(
@@ -162,7 +172,11 @@ def get_cu_hxr_cheetah_model(n_particles: int = 1000):
 
 
 def get_cu_inj_impact_model(n_particles: int = 100):
-    from virtual_accelerator.impact.factory import ImpactModelSpec, build_impact_model
+    from virtual_accelerator.impact.factory import (
+        ImpactModelSpec,
+        build_impact_model,
+        get_actions_from_groups,
+    )
 
     spec = ImpactModelSpec(
         lattice_env_var="LCLS_LATTICE",
@@ -174,5 +188,14 @@ def get_cu_inj_impact_model(n_particles: int = 100):
         space_charge=False,
     )
     model = build_impact_model(spec)
+
+    # register custom actions for linac L0A and L0B sections
+    group_actions = get_actions_from_groups(spec)
+
+    for action in group_actions:
+        old_name = copy(action.name)
+        action.name = IMPACT_GROUP_PV_MAPPING[old_name]["pv"]
+        action.scale = IMPACT_GROUP_PV_MAPPING[old_name].get("scale", 1.0)
+        model.register_impact_action_variable(action)
 
     return model

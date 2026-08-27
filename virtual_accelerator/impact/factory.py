@@ -57,9 +57,10 @@ def get_impact_and_distgen(spec: ImpactModelSpec):
 
     return impact, distgen
 
+
 def get_actions_from_groups(spec: ImpactModelSpec):
     """
-    Get the action variables for the impact model based 
+    Get the action variables for the impact model based
     on the groups defined in the impact YAML file in the model spec.
     """
 
@@ -78,6 +79,7 @@ def get_actions_from_groups(spec: ImpactModelSpec):
         )
         actions.append(action)
     return actions
+
 
 def build_impact_model(spec: ImpactModelSpec):
     """Build and return the impact model based on the provided specification."""

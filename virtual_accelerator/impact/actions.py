@@ -15,12 +15,14 @@ class ImpactGroupVariable(ScalarVariable, WritableActionMixin):
 
     group_name: str
     group_key: str
+    scale: float = 1.0
+    offset: float = 0.0
 
     def _get(self, simulator: Impact) -> Any:
-        return simulator[self.group_name][self.group_key]
+        return (simulator[self.group_name][self.group_key] - self.offset) / self.scale
 
     def _set(self, simulator: Impact, value: Any) -> None:
-        simulator[self.group_name][self.group_key] = value
+        simulator[self.group_name][self.group_key] = value * self.scale + self.offset
 
 
 class ImpactScalarVariable(ScalarVariable):
