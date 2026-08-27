@@ -20,6 +20,7 @@ class ImpactModelSpec:
     distgen_file: str
     n_particles: int
     profmon_config_filename: str
+    stop_location: str | float = None
     impact_file: str = None
     impact_yaml_file: str = None
     numprocs: int = 1
@@ -58,7 +59,7 @@ def get_impact_and_distgen(spec: ImpactModelSpec):
     return impact, distgen
 
 
-def get_actions_from_groups(spec: ImpactModelSpec):
+def get_actions_from_groups(impact: Impact, spec: ImpactModelSpec):
     """
     Get the action variables for the impact model based
     on the groups defined in the impact YAML file in the model spec.
@@ -72,6 +73,10 @@ def get_actions_from_groups(spec: ImpactModelSpec):
 
     actions = []
     for group_name, group_info in impact_config_dict.get("group", {}).items():
+        # only add the action if the group ele_names are present in the impact.ele attribute
+        if not all(ele_name in impact.ele for ele_name in group_info.get("ele_names", [])):
+            continue
+
         action = ImpactGroupVariable(
             name=f"group:{group_name}",
             group_name=group_name,
@@ -79,6 +84,38 @@ def get_actions_from_groups(spec: ImpactModelSpec):
         )
         actions.append(action)
     return actions
+
+def set_stop_location(impact: Impact, stop_location: str | float):
+    """ 
+    Set z stop location based on the beginning of the named element or a float value
+
+    Parameters:
+    -----------
+    impact : Impact
+        The impact model object.
+    stop_location : str | float
+        The stop location, either as the name of an element (str) or a float value representing the z position.
+    
+    Returns:
+    --------
+    None
+    
+    """
+    if isinstance(stop_location, str):
+        try:
+            element = impact.ele[stop_location]
+            stop_location_z = element["s"]
+        except KeyError:
+            raise ValueError(f"Element '{stop_location}' not found in the impact model.")
+    else:
+        stop_location_z = float(stop_location)
+
+    impact.stop = stop_location_z
+
+    # remove elements that are downstream of the stop location
+    impact.ele = {k: v for k, v in impact.ele.items() if v["s"] <= impact.stop}
+    impact.input["lattice"] = [elem for elem in impact.lattice if elem.get("s", float("inf")) <= impact.stop]
+    return impact
 
 
 def build_impact_model(spec: ImpactModelSpec):
@@ -89,6 +126,10 @@ def build_impact_model(spec: ImpactModelSpec):
     impact.header["Np"] = spec.n_particles
     impact.numprocs = spec.numprocs
     impact.header["Bcurr"] = 1 if spec.space_charge else 0
+
+    if spec.stop_location is not None:
+        impact = set_stop_location(impact, spec.stop_location)
+
     impact.run()
 
     # set the parameters of the distgen model
@@ -119,7 +160,7 @@ def build_impact_model(spec: ImpactModelSpec):
 
     # add actions based on groups
     if spec.impact_yaml_file is not None:
-        for action in get_actions_from_groups(spec):
+        for action in get_actions_from_groups(impact, spec):
             model.register_impact_action_variable(action)
 
     return model

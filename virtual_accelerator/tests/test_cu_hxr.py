@@ -443,3 +443,21 @@ class TestCUInjImpact:
 
         # Reset to original value to avoid side effects across tests.
         model.set({bctrl_pv: current_value})
+
+    def test_end_element(self):
+        model = get_cu_inj_impact_model(n_particles=2, end_element="YAG03")
+
+        # assert certain elements are not in the simulation
+        assert "OTR2" not in model.impact_model.simulator.ele.keys()
+        assert "YAG03" in model.impact_model.simulator.ele.keys()
+
+        # assert that the supported variables do not include the grouped removed element
+        assert "group:L0B_scale" not in model.supported_variables
+        assert "group:L0B_phase" not in model.supported_variables
+
+        # assert PVs for the removed element are not in the supported variables
+        assert "OTR2:Image:ArraySize0_RBV" not in model.supported_variables
+        assert "OTR2:Image:ArraySize1_RBV" not in model.supported_variables
+        assert "OTR2:RESOLUTION" not in model.supported_variables
+        assert "ACCL:IN20:400:L0B_ADES" not in model.supported_variables
+        
