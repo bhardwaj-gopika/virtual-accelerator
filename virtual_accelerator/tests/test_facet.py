@@ -52,7 +52,7 @@ class TestFACET2Bmad:
 
     def test_screen_variables(self):
         model = get_facet_bmad_model(
-            track_beam=True, custom_beam_path=TEST_BEAM_PATH, end_element="PR10711"
+            track_beam=True, end_element="PR10711"
         )
         # Check that screen image variables are included in supported variables.
         assert_screen_image_pvs_in_supported_variables(model)
