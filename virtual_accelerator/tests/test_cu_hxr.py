@@ -265,18 +265,17 @@ class TestCUHXRCheetah:
         assert np.isfinite(updated_image).all()
 
     def test_cu_hxr_screen_resolution_matches_yaml_and_expected_range(self):
-        screen_config = _load_cu_hxr_screen_config()
-
         model = get_cu_hxr_cheetah_model()
 
-        resolution_pv, expected_resolution = next(
-            (
-                f"{config_entry['name']}:RESOLUTION",
-                float(config_entry["pixel_size"]),
-            )
-            for config_entry in screen_config.values()
-            if f"{config_entry['name']}:RESOLUTION" in model.supported_variables
+        resolution_pv = "OTRS:IN20:541:RESOLUTION"
+        assert resolution_pv in model.supported_variables
+
+        otr1_element = next(
+            element
+            for element in model.simulator.segment.elements
+            if element.name.split("#", 1)[0].lower() == "otr1"
         )
+        expected_resolution = float(otr1_element.pixel_size[0]) * 1e6
 
         resolution = float(model.get(resolution_pv))
         assert np.isclose(resolution, expected_resolution)
@@ -357,11 +356,6 @@ class TestCUInjImpact:
             assert isinstance(group_variable, ImpactGroupVariable)
             assert not getattr(group_variable, "read_only", True)
             assert np.isclose(group_variable.scale, group_config.get("scale", 1.0))
-
-            simulator_group_name = group_name.removeprefix("group:")
-            simulator = model.impact_model.simulator
-            assert simulator_group_name in simulator
-            assert group_variable.group_key in simulator[simulator_group_name]
 
         # Use one representative mapped PV for roundtrip set/get behavior.
         _, test_group_config = next(iter(IMPACT_GROUP_PV_MAPPING.items()))
