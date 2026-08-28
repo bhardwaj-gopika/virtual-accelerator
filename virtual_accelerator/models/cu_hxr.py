@@ -4,12 +4,20 @@ import os
 from lume.staged_model import StagedModel
 
 IMPACT_GROUP_PV_MAPPING = {
-    "group:L0A_phase": {"pv": "ACCL:IN20:300:L0A_PDES", "element":"L0A_entrance"},
-    "group:L0B_phase": {"pv": "ACCL:IN20:400:L0B_PDES", "element":"L0B_entrance"},
-    "group:L0A_scale": {"pv": "ACCL:IN20:300:L0A_ADES", "scale": 1e6, "element":"L0A_entrance"},
-    "group:L0B_scale": {"pv": "ACCL:IN20:400:L0B_ADES", "scale": 1e6, "element":"L0B_entrance"},
-    "group:GUN_phase": {"pv": "GUN:IN20:1:GN1_PDES", "element":"GUN"},
-    "group:GUN_scale": {"pv": "GUN:IN20:1:GN1_ADES", "scale": 1e6, "element":"GUN"},
+    "group:L0A_phase": {"pv": "ACCL:IN20:300:L0A_PDES", "element": "L0A_entrance"},
+    "group:L0B_phase": {"pv": "ACCL:IN20:400:L0B_PDES", "element": "L0B_entrance"},
+    "group:L0A_scale": {
+        "pv": "ACCL:IN20:300:L0A_ADES",
+        "scale": 1e6,
+        "element": "L0A_entrance",
+    },
+    "group:L0B_scale": {
+        "pv": "ACCL:IN20:400:L0B_ADES",
+        "scale": 1e6,
+        "element": "L0B_entrance",
+    },
+    "group:GUN_phase": {"pv": "GUN:IN20:1:GN1_PDES", "element": "GUN"},
+    "group:GUN_scale": {"pv": "GUN:IN20:1:GN1_ADES", "scale": 1e6, "element": "GUN"},
 }
 
 
@@ -202,7 +210,10 @@ def get_cu_inj_impact_model(n_particles: int = 100, end_element="OTR2"):
         action.name = IMPACT_GROUP_PV_MAPPING[old_name]["pv"]
         action.scale = IMPACT_GROUP_PV_MAPPING[old_name].get("scale", 1.0)
 
-        if IMPACT_GROUP_PV_MAPPING[old_name]["element"] in model.impact_model.simulator.ele:
+        if (
+            IMPACT_GROUP_PV_MAPPING[old_name]["element"]
+            in model.impact_model.simulator.ele
+        ):
             model.register_impact_action_variable(action)
 
     return model

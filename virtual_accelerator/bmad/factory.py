@@ -60,7 +60,6 @@ def build_bmad_model(
     lattice_root = os.environ[spec.lattice_env_var]
     init_file = os.path.join(lattice_root, spec.tao_init_relpath)
     tao = Tao(f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}")
-    
 
     # set tracking to start_element
     tao.cmd(f"set beam track_start = {start_element}")

@@ -74,7 +74,9 @@ def get_actions_from_groups(impact: Impact, spec: ImpactModelSpec):
     actions = []
     for group_name, group_info in impact_config_dict.get("group", {}).items():
         # only add the action if the group ele_names are present in the impact.ele attribute
-        if not all(ele_name in impact.ele for ele_name in group_info.get("ele_names", [])):
+        if not all(
+            ele_name in impact.ele for ele_name in group_info.get("ele_names", [])
+        ):
             continue
 
         action = ImpactGroupVariable(
@@ -85,8 +87,9 @@ def get_actions_from_groups(impact: Impact, spec: ImpactModelSpec):
         actions.append(action)
     return actions
 
+
 def set_stop_location(impact: Impact, stop_location: str | float):
-    """ 
+    """
     Set z stop location based on the beginning of the named element or a float value
 
     Parameters:
@@ -95,18 +98,20 @@ def set_stop_location(impact: Impact, stop_location: str | float):
         The impact model object.
     stop_location : str | float
         The stop location, either as the name of an element (str) or a float value representing the z position.
-    
+
     Returns:
     --------
     None
-    
+
     """
     if isinstance(stop_location, str):
         try:
             element = impact.ele[stop_location]
             stop_location_z = element["s"]
         except KeyError:
-            raise ValueError(f"Element '{stop_location}' not found in the impact model.")
+            raise ValueError(
+                f"Element '{stop_location}' not found in the impact model."
+            )
     else:
         stop_location_z = float(stop_location)
 
@@ -114,7 +119,9 @@ def set_stop_location(impact: Impact, stop_location: str | float):
 
     # remove elements that are downstream of the stop location
     impact.ele = {k: v for k, v in impact.ele.items() if v["s"] <= impact.stop}
-    impact.input["lattice"] = [elem for elem in impact.lattice if elem.get("s", float("inf")) <= impact.stop]
+    impact.input["lattice"] = [
+        elem for elem in impact.lattice if elem.get("s", float("inf")) <= impact.stop
+    ]
     return impact
 
 

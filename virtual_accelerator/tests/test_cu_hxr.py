@@ -454,4 +454,3 @@ class TestCUInjImpact:
         assert "OTR2:Image:ArraySize1_RBV" not in model.supported_variables
         assert "OTR2:RESOLUTION" not in model.supported_variables
         assert "ACCL:IN20:400:L0B_ADES" not in model.supported_variables
-        
