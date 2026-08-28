@@ -109,7 +109,7 @@ def build_bmad_model(
             and spec.default_beam_relpath is not None
             and start_element == spec.default_track_start
         ):
-            beam_path = Path(__file__).parent / ".." / spec.default_beam_relpath
+            beam_path = Path(__file__).parent / spec.default_beam_relpath
             model.tao.cmd(f"set beam_init position_file = {beam_path}")
 
         else:
@@ -117,7 +117,7 @@ def build_bmad_model(
                 "track_beam=True for start_element "
                 f"!= {spec.default_track_start} without providing custom_beam_path"
             )
-            beam_path = Path(__file__).parent / ".." / spec.default_beam_relpath
+            beam_path = Path(__file__).parent / spec.default_beam_relpath
             model.tao.cmd(f"set beam_init position_file = {beam_path}")
 
         model.set({"track_type": "beam"})

@@ -44,7 +44,7 @@ def get_cu_hxr_bmad_model(
         lattice_env_var="LCLS_LATTICE",
         tao_init_relpath="bmad/models/cu_hxr/tao.init",
         profmon_config_filename="cu_hxr_profmon_info.yaml",
-        default_beam_relpath="beams/bmad_ref_particle",
+        default_beam_relpath="bmad_ref_particle",
         default_track_start="OTR2",
     )
     return build_bmad_model(
