@@ -88,7 +88,7 @@ def build_bmad_model(
     active_screens = tuple(
         element
         for element, element_type in element_types.items()
-        if element_type == "Screen" or element_type == "Marker"
+        if element_type == "Screen"
     )
 
     # create LUMEBmadModel with the Tao instance, variables, and active screens for beam dumping
