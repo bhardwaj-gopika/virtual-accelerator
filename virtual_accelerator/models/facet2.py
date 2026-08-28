@@ -45,7 +45,7 @@ def get_facet_bmad_model(
     start_element="L0AFEND", end_element="END", track_beam=False, custom_beam_path=None
 ):
     """
-    Get the LUMEBmadModel for the FACET-II lattice from L0AFEND to END.
+    Get the LUMEBmadModel for the FACET-II lattice from `start_element` to `end_element`.
 
     Parameters
     -------------

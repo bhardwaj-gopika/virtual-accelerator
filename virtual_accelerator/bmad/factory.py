@@ -60,6 +60,7 @@ def build_bmad_model(
     lattice_root = os.environ[spec.lattice_env_var]
     init_file = os.path.join(lattice_root, spec.tao_init_relpath)
     tao = Tao(f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}")
+    
 
     # set tracking to start_element
     tao.cmd(f"set beam track_start = {start_element}")
@@ -110,16 +111,15 @@ def build_bmad_model(
             and start_element == spec.default_track_start
         ):
             beam_path = Path(__file__).parent / spec.default_beam_relpath
-            model.tao.cmd(f"set beam_init position_file = {beam_path}")
 
         else:
             warnings.warn(
                 "track_beam=True for start_element "
                 f"!= {spec.default_track_start} without providing custom_beam_path"
             )
-            beam_path = Path(__file__).parent / spec.default_beam_relpath
-            model.tao.cmd(f"set beam_init position_file = {beam_path}")
+            beam_path = Path(__file__).parent / "bmad_ref_particle"
 
+        model.tao.cmd(f"set beam_init position_file = {beam_path}")
         model.set({"track_type": "beam"})
 
     return model
