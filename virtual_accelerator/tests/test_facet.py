@@ -1,20 +1,6 @@
 import pytest
 import numpy as np
 
-from virtual_accelerator.tests.dependency_profiles import (
-    HAS_BMAD_DEPS,
-    HAS_FACET2_LATTICE,
-    HAS_FACET_SURROGATE_DEPS,
-    HAS_IMPACT_DEPS,
-    HAS_LCLS_LATTICE,
-)
-
-if not HAS_BMAD_DEPS:
-    pytest.skip(
-        "requires bmad optional dependencies",
-        allow_module_level=True,
-    )
-
 from lume.exceptions import ReadOnlyError
 
 from virtual_accelerator.models.facet2 import (
@@ -23,6 +9,15 @@ from virtual_accelerator.models.facet2 import (
     get_facet_impact_model,
     get_facet_staged_model,
 )
+
+from virtual_accelerator.tests.dependency_profiles import (
+    HAS_BMAD_DEPS,
+    HAS_FACET2_LATTICE,
+    HAS_FACET_SURROGATE_DEPS,
+    HAS_IMPACT_DEPS,
+    HAS_LCLS_LATTICE,
+)
+
 from virtual_accelerator.tests._bmad_model_test_utils import (
     TEST_BEAM_PATH,
     assert_bpm_pvs_match_tao_lattice,
