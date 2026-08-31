@@ -27,7 +27,9 @@ def get_element_name_to_base_pv_mapping(lcls_lattice_path: str) -> dict[str, str
     file = os.path.join(
         lcls_lattice_path, "bmad/conversion/from_oracle/lcls_elements.csv"
     )
-    info = pd.read_csv(file, header=1)
+    info = pd.read_csv(file, dtype=str)
+    if "Element" not in info.columns:
+        info = pd.read_csv(file, dtype=str, header=1)
     mapping = dict(zip(info["Element"], info["Control System Name"]))
 
     return mapping

@@ -1,5 +1,7 @@
 import tempfile
 
+from copy import copy
+
 from virtual_accelerator.bmad.actions import CavityPREQReadbackVariable
 from virtual_accelerator.bmad.factory import BmadModelSpec, build_bmad_model
 from lume_bmad.actions import EleScalarVariable
@@ -9,6 +11,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+IMPACT_GROUP_PV_MAPPING = {
+    "group:L0AF_phase": {"pv": "KLYS:IN10:81:PDES", "element": "L0AF_entrance"},
+    "group:L0BF_phase": {"pv": "KLYS:IN10:41:PDES", "element": "L0BF_entrance"},
+    "group:L0AF_scale": {
+        "pv": "KLYS:IN10:81:ADES",
+        "scale": 1e6,
+        "element": "L0AF_entrance",
+    },
+    "group:L0BF_scale": {
+        "pv": "KLYS:IN10:41:ADES",
+        "scale": 1e6,
+        "element": "L0BF_entrance",
+    },
+    "group:GUNF_phase": {"pv": "KLYS:IN10:31:PDES", "element": "GUNF"},
+    "group:GUNF_scale": {"pv": "KLYS:IN10:31:ADES", "scale": 1e6, "element": "GUNF"},
+}
 
 def add_facet_custom_variables(model: LUMEBmadModel) -> None:
     """
@@ -154,3 +172,38 @@ def get_facet_staged_model(n_particles=10000, surrogate_inputs="machine", **kwar
     staged_model = StagedModel([injector_surrogate, facet_bmad_model])
 
     return staged_model
+
+def get_facet_impact_model(n_particles: int = 100, end_element = "PR10571"):
+    from virtual_accelerator.impact.factory import (
+            ImpactModelSpec,
+            build_impact_model,
+            get_actions_from_groups,
+        )
+    
+    spec = ImpactModelSpec(
+        lattice_env_var="FACET2_LATTICE",
+        distgen_file="distgen/models/f2e_inj/v0/distgen.yaml",
+        impact_yaml_file="impact/models/f2e_inj/v0/ImpactT.yaml",
+        profmon_config_filename="facet2_profmon_info.yaml",
+        n_particles=n_particles,
+        numprocs=1,
+        space_charge=False,
+        stop_location=end_element,
+    )
+    model = build_impact_model(spec)
+
+    # register custom actions for linac L0A and L0B sections
+    group_actions = get_actions_from_groups(model.impact_model.simulator, spec)
+
+    for action in group_actions:
+        old_name = copy(action.name)
+        action.name = IMPACT_GROUP_PV_MAPPING[old_name]["pv"]
+        action.scale = IMPACT_GROUP_PV_MAPPING[old_name].get("scale", 1.0)
+
+        if (
+            IMPACT_GROUP_PV_MAPPING[old_name]["element"]
+            in model.impact_model.simulator.ele
+        ):
+            model.register_impact_action_variable(action)
+
+    return model
