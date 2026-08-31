@@ -27,7 +27,12 @@ from virtual_accelerator.tests._bmad_model_test_utils import (
     assert_screen_image_pvs_in_supported_variables,
 )
 from virtual_accelerator.utils.variables import get_pvs_by_element_name
-from virtual_accelerator.tests.test_cu_hxr import HAS_IMPACT_EXECUTABLE, IMPACT_SKIP_REASON, IMPACT_SKIP_REASON, SCREEN_PV_ATTRS, _get_impact_lattice_element_metadata
+from virtual_accelerator.tests.test_cu_hxr import (
+    HAS_IMPACT_EXECUTABLE,
+    IMPACT_SKIP_REASON,
+    SCREEN_PV_ATTRS,
+    _get_impact_lattice_element_metadata,
+)
 
 
 @pytest.mark.requires_bmad
@@ -37,7 +42,6 @@ from virtual_accelerator.tests.test_cu_hxr import HAS_IMPACT_EXECUTABLE, IMPACT_
     reason="requires bmad optional dependencies and FACET2_LATTICE",
 )
 class TestFACET2Bmad:
-
     def test_initialization(self):
         assert_bmad_model_initialization(get_facet_bmad_model)
 
@@ -200,6 +204,7 @@ class TestFACET2Bmad:
             model.set({var: value * 1.1})
             assert np.isclose(model.get(var), value * 1.1)
 
+
 class TestFACETImpact:
     pytestmark = [
         pytest.mark.requires_impact,
@@ -284,7 +289,7 @@ class TestFACETImpact:
 
         assert image.shape == (size1, size0)
         assert resolution > 0.0
-    
+
     def test_quadrupole_pvs_match_impact_lattice(self, model):
         element_names, element_types = _get_impact_lattice_element_metadata(model)
 

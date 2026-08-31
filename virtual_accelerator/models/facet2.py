@@ -28,6 +28,7 @@ IMPACT_GROUP_PV_MAPPING = {
     "group:GUNF_scale": {"pv": "KLYS:IN10:31:ADES", "scale": 1e6, "element": "GUNF"},
 }
 
+
 def add_facet_custom_variables(model: LUMEBmadModel) -> None:
     """
     Add custom variables to the FACET-II model.
@@ -173,13 +174,14 @@ def get_facet_staged_model(n_particles=10000, surrogate_inputs="machine", **kwar
 
     return staged_model
 
-def get_facet_impact_model(n_particles: int = 100, end_element = "PR10571"):
+
+def get_facet_impact_model(n_particles: int = 100, end_element="PR10571"):
     from virtual_accelerator.impact.factory import (
-            ImpactModelSpec,
-            build_impact_model,
-            get_actions_from_groups,
-        )
-    
+        ImpactModelSpec,
+        build_impact_model,
+        get_actions_from_groups,
+    )
+
     spec = ImpactModelSpec(
         lattice_env_var="FACET2_LATTICE",
         distgen_file="distgen/models/f2e_inj/v0/distgen.yaml",
