@@ -30,14 +30,11 @@ def get_normalized_element_type(impact: Impact, element_name):
 
 
 def get_all_element_types(impact: Impact):
-    element_dict = impact.ele
-
-    # pop elements that are not supported
-    for name in list(element_dict.keys()):
-        if element_dict[name]["type"] not in SUPPORTED_ELEMENT_TYPES:
-            element_dict.pop(name)
-
-    return {name: get_normalized_element_type(impact, name) for name in element_dict}
+    return {
+        name: get_normalized_element_type(impact, name)
+        for name, element in impact.ele.items()
+        if element["type"] in SUPPORTED_ELEMENT_TYPES
+    }
 
 
 def get_variables(

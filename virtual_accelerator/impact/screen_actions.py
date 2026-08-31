@@ -94,9 +94,10 @@ class ScreenImageVariable(_ScreenSpecVariableMixin, NDVariable, ReadOnlyActionMi
 class ScreenResolutionVariable(
     _ScreenSpecVariableMixin, ScalarVariable, ReadOnlyActionMixin
 ):
-    """Read-only action that returns the pixel size in meters."""
+    """Read-only action that returns the pixel size in microns."""
 
-    pixel_size: float  # default pixel size in meters
+    pixel_size: float
+    unit: str = "um"  # default unit is microns
     read_only: bool = True
 
     @classmethod

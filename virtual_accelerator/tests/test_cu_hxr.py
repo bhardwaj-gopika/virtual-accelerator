@@ -450,7 +450,7 @@ class TestCUInjImpact:
         assert "group:L0B_phase" not in model.supported_variables
 
         # assert PVs for the removed element are not in the supported variables
-        assert "OTR2:Image:ArraySize0_RBV" not in model.supported_variables
-        assert "OTR2:Image:ArraySize1_RBV" not in model.supported_variables
-        assert "OTR2:RESOLUTION" not in model.supported_variables
+        assert "OTRS:Image:571:ArraySize0_RBV" not in model.supported_variables
+        assert "OTRS:Image:571:ArraySize1_RBV" not in model.supported_variables
+        assert "OTRS:Image:571:RESOLUTION" not in model.supported_variables
         assert "ACCL:IN20:400:L0B_ADES" not in model.supported_variables
