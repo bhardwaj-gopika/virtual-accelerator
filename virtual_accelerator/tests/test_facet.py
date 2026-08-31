@@ -3,7 +3,12 @@ import numpy as np
 
 from lume.exceptions import ReadOnlyError
 
-from virtual_accelerator.models.facet2 import IMPACT_GROUP_PV_MAPPING, get_facet_impact_model
+from virtual_accelerator.models.facet2 import (
+    IMPACT_GROUP_PV_MAPPING,
+    get_facet_bmad_model,
+    get_facet_impact_model,
+    get_facet_staged_model,
+)
 from virtual_accelerator.tests.dependency_profiles import (
     HAS_BMAD_DEPS,
     HAS_FACET2_LATTICE,
@@ -21,27 +26,18 @@ from virtual_accelerator.tests._bmad_model_test_utils import (
     assert_magnet_pvs_match_tao_lattice,
     assert_screen_image_pvs_in_supported_variables,
 )
+from virtual_accelerator.utils.variables import get_pvs_by_element_name
 from virtual_accelerator.tests.test_cu_hxr import HAS_IMPACT_EXECUTABLE, IMPACT_SKIP_REASON, IMPACT_SKIP_REASON, SCREEN_PV_ATTRS, _get_impact_lattice_element_metadata
 
-pytestmark = [
-    pytest.mark.requires_bmad,
-    pytest.mark.requires_facet2_lattice,
-]
 
-if HAS_BMAD_DEPS and HAS_FACET2_LATTICE:
-    from virtual_accelerator.models.facet2 import (
-        get_facet_bmad_model,
-        get_facet_staged_model,
-    )
-    from virtual_accelerator.utils.variables import get_pvs_by_element_name
-else:
-    pytest.skip(
-        "requires bmad optional dependencies and FACET2_LATTICE",
-        allow_module_level=True,
-    )
-
-
+@pytest.mark.requires_bmad
+@pytest.mark.requires_facet2_lattice
+@pytest.mark.skipif(
+    not HAS_BMAD_DEPS or not HAS_FACET2_LATTICE,
+    reason="requires bmad optional dependencies and FACET2_LATTICE",
+)
 class TestFACET2Bmad:
+
     def test_initialization(self):
         assert_bmad_model_initialization(get_facet_bmad_model)
 
