@@ -2,11 +2,6 @@ import tempfile
 
 from copy import copy
 
-from virtual_accelerator.bmad.actions import CavityPREQReadbackVariable
-from virtual_accelerator.bmad.factory import BmadModelSpec, build_bmad_model
-from lume_bmad.actions import EleScalarVariable
-from lume_bmad.model import LUMEBmadModel
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,7 +24,7 @@ IMPACT_GROUP_PV_MAPPING = {
 }
 
 
-def add_facet_custom_variables(model: LUMEBmadModel) -> None:
+def add_facet_custom_variables(model) -> None:
     """
     Add custom variables to the FACET-II model.
 
@@ -38,6 +33,9 @@ def add_facet_custom_variables(model: LUMEBmadModel) -> None:
     model : LUMEBmadModel
         The FACET-II model to which custom variables will be added.
     """
+    from virtual_accelerator.bmad.actions import CavityPREQReadbackVariable
+    from lume_bmad.actions import EleScalarVariable
+
     # Add the L0B RF phase feedback variable to the model if L0BF#1 is included in the model
     if "L0BF#1" in model.get("name"):
         logger.debug("Adding L0B RF phase feedback variable to the model.")
@@ -94,6 +92,8 @@ def get_facet_bmad_model(
         - n_rf_steps=1000 for lcavity elements
         - is_on=false for fixer elements
     """
+    from virtual_accelerator.bmad.factory import BmadModelSpec, build_bmad_model
+
     custom_aliases = {
         "PR10241": "PROF:IN10:241",
         "PR10571": "PROF:IN10:571",
