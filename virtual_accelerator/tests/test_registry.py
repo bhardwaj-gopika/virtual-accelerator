@@ -2,13 +2,15 @@
 
 import pytest
 
+from lume.actions import WritableActionMixin
+
 from virtual_accelerator.registry import (
-    _downstream_start,
     _normalize,
     _resolve_handoffs,
     _route_kwargs,
+    _strip_overlapping_variables,
     get_model,
-    list_diagnostics,
+    list_handoff_points,
     list_models,
     models_available,
 )
@@ -29,13 +31,13 @@ class TestDiscovery:
         assert set(list_models(facility="lcls")) == set(MODELS)
         assert list_models(facility="facet2") == []
 
-    def test_diagnostics_are_lattice_ordered(self):
-        diags = list_diagnostics("bmad_cu_hxr")
+    def test_handoff_points_are_lattice_ordered(self):
+        diags = list_handoff_points("bmad_cu_hxr")
         assert diags.index("YAG02") < diags.index("YAG03") < diags.index("OTR2")
 
     def test_impact_omits_unavailable_screens(self):
         # YAG01/OTR3 are commented out in the deck; OTR4 is past stop_1.
-        diags = list_diagnostics("impact_cu_inj")
+        diags = list_handoff_points("impact_cu_inj")
         assert "OTR2" in diags
         for absent in ("YAG01", "OTR3", "OTR4"):
             assert absent not in diags
@@ -60,9 +62,9 @@ class TestEntryIntegrity:
         assert entry.broadcast_params <= set(entry.params)
 
     @pytest.mark.parametrize("name", sorted(MODELS))
-    def test_element_after_keys_are_diagnostics(self, name):
+    def test_element_alias_keys_are_handoff_points(self, name):
         entry = MODELS[name]
-        assert set(entry.element_after) <= set(entry.diagnostics)
+        assert set(entry.element_aliases) <= set(entry.handoff_points)
 
     @pytest.mark.parametrize("name", sorted(MODELS))
     def test_defaults_are_consistent(self, name):
@@ -78,8 +80,8 @@ class TestValidation:
         with pytest.raises(KeyError, match="Unknown model"):
             get_model("bmad_does_not_exist")
 
-    def test_rejects_unavailable_diagnostic(self):
-        with pytest.raises(ValueError, match="not an available end diagnostic"):
+    def test_rejects_unavailable_screen(self):
+        with pytest.raises(ValueError, match="not an available end screen"):
             get_model("impact_cu_inj", end_ele="OTR4")
 
     def test_rejects_impact_as_downstream_stage(self):
@@ -133,37 +135,84 @@ class TestHandoffResolution:
         entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
         assert _resolve_handoffs(entries, None) == ["OTR2"]
 
-    def test_scalar_upstream_hands_off_at_the_diagnostic(self):
-        # The surrogate publishes XRMS/YRMS only, so no PV collision.
-        start = _downstream_start(
-            MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"], "OTR2"
-        )
-        assert start == "OTR2"
+    def test_explicit_handoff_is_used_verbatim(self):
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        assert _resolve_handoffs(entries, "YAG03") == ["YAG03"]
 
-    @pytest.mark.parametrize(
-        ("handoff", "expected"), [("YAG03", "DL02A2"), ("OTR2", "DE06D")]
-    )
-    def test_imaging_upstream_starts_after_the_diagnostic(self, handoff, expected):
-        # Both stages image the screen, so the downstream stage must skip it or
-        # StagedModel would reject the pair on duplicate PVs.
-        start = _downstream_start(
-            MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"], handoff
-        )
-        assert start == expected
 
-    def test_unrecorded_handoff_gives_actionable_error(self):
-        entry = MODELS["bmad_cu_hxr"]
-        stripped = type(entry)(**{**entry.__dict__, "element_after": {}})
-        with pytest.raises(ValueError, match="element_after"):
-            _downstream_start(MODELS["impact_cu_inj"], stripped, "OTR2")
+class _FakeStage:
+    """Minimal stand-in for a LUMEModel with registerable action variables."""
+
+    def __init__(self, variables):
+        self._vars = dict(variables)
+
+    @property
+    def supported_variables(self):
+        return dict(self._vars)
+
+    def unregister_action_variable(self, name):
+        return self._vars.pop(name)
+
+
+class _ReadOnlyVar:
+    pass
+
+
+class _WritableVar(WritableActionMixin):
+    def _get(self, simulator):  # pragma: no cover - never invoked
+        raise NotImplementedError
+
+    def _set(self, simulator, value):  # pragma: no cover - never invoked
+        raise NotImplementedError
+
+
+class TestOverlapRemoval:
+    """The handoff element belongs to both stages, so both publish its PVs.
+
+    The upstream stage owns them since it tracks the beam to that plane, so they
+    are unregistered downstream rather than moving the downstream start element.
+    """
+
+    def test_shared_read_only_variables_are_removed_downstream(self):
+        up = _FakeStage({"SCREEN:IMAGE": _ReadOnlyVar(), "UP:ONLY": _ReadOnlyVar()})
+        down = _FakeStage({"SCREEN:IMAGE": _ReadOnlyVar(), "DOWN:ONLY": _ReadOnlyVar()})
+        removed = _strip_overlapping_variables(up, down, "up", "down")
+        assert removed == ["SCREEN:IMAGE"]
+        assert set(down.supported_variables) == {"DOWN:ONLY"}
+        # the upstream stage keeps its copy
+        assert "SCREEN:IMAGE" in up.supported_variables
+
+    def test_no_overlap_is_a_no_op(self):
+        up = _FakeStage({"UP:ONLY": _ReadOnlyVar()})
+        down = _FakeStage({"DOWN:ONLY": _ReadOnlyVar()})
+        assert _strip_overlapping_variables(up, down, "up", "down") == []
+        assert set(down.supported_variables) == {"DOWN:ONLY"}
+
+    def test_writable_overlap_raises_instead_of_silently_dropping(self):
+        # Both stages driving the same magnet means the extents overlap rather
+        # than meeting at a plane; dropping it downstream would leave that stage
+        # tracking with a stale value.
+        up = _FakeStage({"QUAD:BCTRL": _WritableVar()})
+        down = _FakeStage({"QUAD:BCTRL": _WritableVar()})
+        with pytest.raises(ValueError, match="writable variable"):
+            _strip_overlapping_variables(up, down, "up", "down")
+        assert "QUAD:BCTRL" in down.supported_variables
+
+    def test_stage_without_unregister_support_raises(self):
+        class Fixed:
+            supported_variables = {"SHARED": _ReadOnlyVar()}
+
+        up = _FakeStage({"SHARED": _ReadOnlyVar()})
+        with pytest.raises(TypeError, match="unregister_action_variable"):
+            _strip_overlapping_variables(up, Fixed(), "up", "down")
 
 
 class TestElementNameCase:
     """Element names are normalised at the API boundary.
 
     Tao is case-insensitive so lower case would appear to work, but IMPACT's
-    impact.ele[...] is a dict lookup and the registry's own diagnostics and
-    element_after lookups would silently miss.
+    impact.ele[...] is a dict lookup and the registry's own handoff_points and
+    element_aliases lookups would silently miss.
     """
 
     @pytest.mark.parametrize("given", ["OTR4", "otr4", "Otr4", "oTr4"])
@@ -173,23 +222,20 @@ class TestElementNameCase:
     def test_normalize_passes_none_through(self):
         assert _normalize(None) is None
 
-    def test_lowercase_bad_diagnostic_is_still_rejected(self):
+    def test_lowercase_bad_screen_is_still_rejected(self):
         # Before normalisation this slipped past validation and failed later
         # inside Tao with a far worse message.
-        with pytest.raises(ValueError, match="not an available end diagnostic"):
+        with pytest.raises(ValueError, match="not an available end screen"):
             get_model("impact_cu_inj", end_ele="otr99")
 
-    def test_lowercase_valid_diagnostic_is_accepted(self):
+    def test_lowercase_valid_screen_is_accepted(self):
         # Reaches the builder (and fails only because the extra is absent here),
         # proving validation no longer rejects it.
         with pytest.raises((ImportError, ValueError)) as excinfo:
             get_model("impact_cu_inj", end_ele="yag03")
         assert "not an available" not in str(excinfo.value)
 
-    def test_lowercase_handoff_still_skips_the_screen(self):
-        # Mirrors what get_model does: normalise, then resolve the handoff.
-        handoff = _normalize("yag03")
-        start = _downstream_start(
-            MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"], handoff
-        )
-        assert start == "DL02A2"
+    def test_lowercase_handoff_normalises_before_resolution(self):
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        handoffs = [_normalize(h) for h in _resolve_handoffs(entries, "yag03")]
+        assert handoffs == ["YAG03"]

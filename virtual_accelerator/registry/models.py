@@ -26,8 +26,19 @@ class ModelEntry:
     params: dict[str, Any]
     """Configurable parameter name -> default. Also the allow-list for kwargs."""
 
-    diagnostics: tuple[str, ...]
-    """Standard-named diagnostics usable as handoff points, in lattice order."""
+    handoff_points: tuple[str, ...]
+    """Suggested start/end/handoff elements, in lattice order.
+
+    A discovery aid, **not** a restriction: any element name in the underlying
+    lattice may be used. Screens are enumerated exhaustively, so a screen-shaped
+    name absent from this tuple is a typo and is rejected; anything else passes
+    through to the engine.
+
+    Positions refer to the **entrance** face of the element. Bmad's
+    ``-slice_lattice`` begins at an element's entrance and cannot begin at a
+    midpoint, and IMPACT's ``impact.ele[name]["s"]`` is also the entrance, so the
+    entrance is the only reference plane both engines express identically.
+    """
 
     start_param: str | None = None
     """Builder kwarg controlling the start element, or None if not configurable."""
@@ -41,28 +52,12 @@ class ModelEntry:
     broadcast_params: frozenset[str] = frozenset()
     """Params safe to send to every stage of a staged model, e.g. n_particles."""
 
-    images_diagnostics: bool = True
-    """Whether this model publishes full screen-image PVs for its diagnostics.
-
-    Two stages that both image the handoff diagnostic would publish the same PVs
-    and be rejected by StagedModel, so the downstream stage has to start just
-    past it. Surrogates publish only scalars (XRMS/YRMS) and so never collide.
-    """
-
-    element_after: dict[str, str] = field(default_factory=dict)
-    """Diagnostic -> the element immediately downstream of it.
-
-    Only needed for entries that can be a downstream stage, and only for
-    diagnostics used as handoff points. Bmad's ``s`` is the exit face, so
-    slicing from ``DL02A2`` begins at exactly YAG03's position while excluding
-    the screen itself.
-    """
-
     element_aliases: dict[str, str] = field(default_factory=dict)
     """Standard name -> this engine's local name.
 
-    Empty for every current entry: diagnostic names already agree between Bmad
-    and IMPACT in both facilities. Kept as the place a future rename would go.
+    Diagnostics already agree between Bmad and IMPACT, so this only carries the
+    handful of elements that genuinely differ -- currently just the gun, which
+    Bmad calls CATHODE and IMPACT calls GUN.
     """
 
     @property
@@ -96,10 +91,11 @@ MODELS: dict[str, ModelEntry] = {
         params={"n_particles": 100, "end_element": "OTR2"},
         # YAG01 and OTR3 exist in the deck but their lines are commented out;
         # OTR4 is past stop_1 at z=16.5.
-        diagnostics=("YAG02", "YAG03", "OTR1", "OTR2"),
+        handoff_points=("CATHODE", "YAG02", "YAG03", "OTR1", "OTR2"),
         end_param="end_element",
         default_end="OTR2",
         broadcast_params=frozenset({"n_particles"}),
+        element_aliases={"CATHODE": "GUN"},
     ),
     "bmad_cu_hxr": ModelEntry(
         name="bmad_cu_hxr",
@@ -114,24 +110,11 @@ MODELS: dict[str, ModelEntry] = {
             "track_beam": False,
             "custom_beam_path": None,
         },
-        diagnostics=_ALL_CU_HXR_SCREENS,
+        handoff_points=("CATHODE", *_ALL_CU_HXR_SCREENS, "END"),
         start_param="start_element",
         end_param="end_element",
         default_start="OTR2",
         default_end="END",
-        # Verified against the lattice: each value's entrance face sits exactly at
-        # the screen's s. OTR11/OTR21 are omitted because both are followed by an
-        # element named DDG4, which is ambiguous and so unusable as a slice start.
-        element_after={
-            "YAG02": "DL01G",
-            "YAG03": "DL02A2",
-            "OTRH1": "DH03A",
-            "OTRH2": "DH02B",
-            "OTR1": "DE05C",
-            "OTR2": "DE06D",
-            "OTR3": "DE07",
-            "OTR4": "DB00B",
-        },
     ),
     "surrogate_cu_inj": ModelEntry(
         name="surrogate_cu_inj",
@@ -143,10 +126,9 @@ MODELS: dict[str, ModelEntry] = {
         ),
         extras=("surrogate",),
         params={"n_particles": 1000},
-        diagnostics=("OTR2",),
+        handoff_points=("CATHODE", "OTR2"),
         default_end="OTR2",
         broadcast_params=frozenset({"n_particles"}),
-        images_diagnostics=False,
     ),
     "cheetah_cu_hxr": ModelEntry(
         name="cheetah_cu_hxr",
@@ -156,7 +138,7 @@ MODELS: dict[str, ModelEntry] = {
         builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_cheetah_model",
         extras=("cheetah",),
         params={"n_particles": 1000},
-        diagnostics=(),
+        handoff_points=(),
         broadcast_params=frozenset({"n_particles"}),
     ),
 }

@@ -6,10 +6,12 @@ registered yet; §7 (screen PV prefixes) should land before they are.
 Goal: one entry point for every model, a registry of what exists and how to configure it, and
 enough per-model metadata to stitch stages together safely.
 
-Scope decision driving this revision: **handoff points are diagnostics only.** That single
-constraint removes the need for an element catalog, because diagnostics are the one category of
-element whose names already agree across engines (see §1). Each model carries a plain ordered list
-of the diagnostics it exposes, plus an optional name-override dict for future divergence.
+Scope: **any lattice element may be a start/end point**, with `CATHODE` as the canonical name for
+models starting at the front of the machine. No element catalog is needed, because the only element
+names that differ between engines are the gun and the RF cavity segments (see §1), so a small
+per-model alias dict covers it. Screens are enumerated per model as a discovery aid and a typo check.
+
+Reference plane is the element **entrance** — see §5.
 
 ---
 
@@ -40,14 +42,14 @@ handoff points:
 | gun / cathode | `CATHODE` / `CATHODEF` | `GUN` / `GUNF` |
 | L0A cavity | `L0A` (one lcavity) | `L0A_entrance`, `L0A_body_1`, `L0A_body_2`, `L0A_exit` |
 
-So **the name-override dict is empty for both facilities today.** It exists so a future rename has
-somewhere to live, not because it is currently load-bearing.
+So the alias dict carries only the gun (`CATHODE` → IMPACT `GUN`). Cavity segmentation is one-to-many
+and cavities are not sensible handoff planes, so they are simply not registered as handoff points.
 
-Two facts that don't need machinery but should be written down, because they are the reason not to
-validate handoffs numerically:
+Two facts that don't need machinery but should be written down:
 
-- IMPACT z is element *entrance*; the lattice CSV's `SumL` is element *centre*. They coincide only
-  for zero-length monitors — which is another reason to restrict handoffs to diagnostics.
+- IMPACT z and Bmad slice starts are both the element *entrance*; the lattice CSV's `SumL` is the
+  element *centre*. For a quad these differ by half the length (FACET `QA10361`: 4.3103893 vs
+  4.4123893). This is why the entrance is the reference plane and the CSV's `SumL` is not used for it.
 - FACET IMPACT geometry disagrees with the Bmad geometry by up to ~3.9 mm at `PR10571`, growing
   downstream. LCLS agrees exactly. Real, but a physics caveat rather than something the registry
   should police.
@@ -70,14 +72,11 @@ class ModelEntry:
     params: dict[str, Any]           # param name -> default, for validation + discovery
     broadcast_params: frozenset[str] # params safe to send to every stage, e.g. {"n_particles"}
 
-    diagnostics: tuple[str, ...]     # standard names, ORDERED by lattice position
+    handoff_points: tuple[str, ...]  # suggested elements, ORDERED by lattice position
     start_param: str | None          # builder kwarg for start, None if fixed
     end_param: str | None            # builder kwarg for end, None if fixed
     default_start: str | None
     default_end: str | None
-
-    images_diagnostics: bool         # publishes full screen-image PVs? False for surrogates
-    element_after: dict[str, str]    # diagnostic -> element immediately downstream of it
 
     element_aliases: dict[str, str] = field(default_factory=dict)
     # standard name -> this engine's local name. Empty today; escape hatch only.
@@ -87,7 +86,8 @@ class ModelEntry:
 information (`None` means the extent is fixed) while also recording what each builder *calls* the
 parameter, which differs between engines.
 
-`images_diagnostics` and `element_after` exist because of §5's collision rule — see there for why.
+`handoff_points` is a discovery aid and typo check, **not** a restriction — any lattice element may
+be used as a start/end point. See §5 for how duplicate PVs at the handoff are resolved.
 
 Three choices worth calling out:
 
@@ -96,8 +96,8 @@ Three choices worth calling out:
 registry would force importing every engine module just to import the registry, breaking
 `models_available` for anyone without all extras installed.
 
-**`diagnostics` is ordered by lattice position.** Ordering is then checkable by list index instead
-of by metres, which is what lets §4 drop positions without losing the ordering check.
+**`handoff_points` is ordered by lattice position.** Ordering is then checkable by list index
+instead of by metres, which is what lets the design drop positions entirely.
 
 **No data files, no generator script.** The lists are hand-maintained Python literals in
 `registry/models.py`. They are short, they change only when a lattice model changes, and a diff is
@@ -105,7 +105,7 @@ readable. Revisit only if they start drifting from the lattice.
 
 ```
 virtual_accelerator/registry/
-├── __init__.py     # get_model, models_available, list_diagnostics
+├── __init__.py     # get_model, models_available, list_handoff_points
 └── models.py       # the ModelEntry table
 ```
 
@@ -113,18 +113,18 @@ virtual_accelerator/registry/
 
 ## 3. Model catalog
 
-| registry name | facility | engine | builder | key params | diagnostics (ordered) |
+| registry name | facility | engine | builder | key params | suggested handoff points |
 |---|---|---|---|---|---|
-| `impact_cu_inj` | lcls | impact | `get_cu_inj_impact_model` | `n_particles=100`, `end_element="OTR2"` | YAG02, YAG03, OTR1, OTR2 |
-| `bmad_cu_hxr` | lcls | bmad | `get_cu_hxr_bmad_model` | `start_element="OTR2"`, `end_element="END"`, `track_beam=False`, `custom_beam_path=None` | all 12 profmon screens, YAG02 → OTRDMP |
-| `surrogate_cu_inj` | lcls | surrogate | `get_cu_hxr_injector_surrogate_model` | `n_particles=1000` | OTR2 (fixed end) |
+| `impact_cu_inj` | lcls | impact | `get_cu_inj_impact_model` | `n_particles=100`, `end_element="OTR2"` | CATHODE, YAG02, YAG03, OTR1, OTR2 |
+| `bmad_cu_hxr` | lcls | bmad | `get_cu_hxr_bmad_model` | `start_element="OTR2"`, `end_element="END"`, `track_beam=False`, `custom_beam_path=None` | CATHODE, all 12 profmon screens, END |
+| `surrogate_cu_inj` | lcls | surrogate | `get_cu_hxr_injector_surrogate_model` | `n_particles=1000` | CATHODE, OTR2 (fixed extent) |
 | `cheetah_cu_hxr` | lcls | cheetah | `get_cu_hxr_cheetah_model` | `n_particles=1000` | — |
 
 Naming convention: `<engine>_<lattice>`.
 
 **Not yet registered** — FACET-II, pending §7:
 
-| registry name | facility | engine | builder | key params | diagnostics (ordered) |
+| registry name | facility | engine | builder | key params | suggested handoff points |
 |---|---|---|---|---|---|
 | `impact_f2e_inj` | facet2 | impact | `get_facet_impact_model` | `n_particles=100`, `end_element="PR10571"` | PR10241, PR10465, PR10471, PR10571 |
 | `bmad_f2_elec` | facet2 | bmad | `get_facet_bmad_model` | `start_element="L0AFEND"`, `end_element="END"`, `track_beam=False`, `custom_beam_path=None` | PR10241, PR10465, PR10471, PR10571, PR10711 |
@@ -139,11 +139,10 @@ Notes on the lists:
   `ImpactT_template.in` (per `ImpactT.yaml`'s `input_file:` key). The checked-in `ImpactT.in` is a
   stale truncated artifact stopping at z=12.0 and omitting it — reading that file gives the wrong
   answer about available stop points. Worth an upstream issue.
-- `bmad_f2_elec` currently defaults `start_element="L0AFEND"`, which is a marker rather than a
-  diagnostic. `L0AFEND` exists in both engines (Bmad superimposed marker, IMPACT write-beam
-  element) so it's a legitimate handoff plane; treat markers as admissible where both engines have
-  them, and keep them in `diagnostics` despite the field name. (Or rename the field
-  `handoff_points` — probably clearer.)
+- `bmad_f2_elec` defaults `start_element="L0AFEND"`, a marker rather than a screen. It exists in
+  both engines (Bmad superimposed marker, IMPACT write-beam element) so it is a legitimate handoff
+  plane. Since any element is now allowed, markers need no special treatment — they are simply listed
+  in `handoff_points` where useful.
 
 **Prerequisite:** `surrogate_f2e_inj` has no standalone builder — the `BeamOutputModel` is built
 inline inside `get_facet_staged_model`. It needs extracting to
@@ -195,14 +194,14 @@ stage's end. Interior extents come from `handoff_loc`.
 ### Discovery
 
 ```python
-from virtual_accelerator.registry import models_available, list_diagnostics
+from virtual_accelerator.registry import models_available, list_handoff_points
 
 print(models_available)
 # impact_cu_inj    IMPACT-T LCLS injector, cathode -> OTR2
 # bmad_cu_hxr      Bmad CU-HXR, gun -> undulator/dump
 # ...
 
-list_diagnostics("bmad_cu_hxr")
+list_handoff_points("bmad_cu_hxr")
 # ('YAG02', 'YAG03', 'OTRH1', 'OTRH2', 'OTR1', 'OTR2', 'OTR3', 'OTR4',
 #  'OTR11', 'OTR12', 'OTR21', 'OTRDMP')
 ```
@@ -246,35 +245,33 @@ All checks are name-based. No positions involved.
 which is what makes `get_model(["bmad_cu_hxr", "impact_cu_inj"], ...)` fail with "IMPACT models can
 only start at the cathode" instead of something inscrutable from inside `set_stop_location`.
 
-**C3 — the downstream stage must not re-image the handoff diagnostic.** This one was found by
-testing and is the most important rule in practice.
+**C3 — duplicate PVs at the handoff are removed from the downstream stage.** This is the most
+important rule in practice, and it was revised on 2026-09-02.
 
-IMPACT's `set_stop_location` prunes to `s <= stop`, so a model stopped at `YAG03` *keeps* `YAG03`
-and publishes its six `YAGS:IN20:351:*` image PVs. Slicing Bmad from `YAG03` also includes the
-screen and publishes the same six PVs. `StagedModel` then rejects the pair on duplicate variables —
-after paying for a full IMPACT run.
+Both stages include the handoff element, so both publish its PVs. IMPACT's `set_stop_location`
+prunes to `s <= stop`, so a model stopped at `YAG03` *keeps* the screen and publishes its six
+`YAGS:IN20:351:*` image PVs; Bmad sliced from `YAG03` publishes the same six. `StagedModel` then
+rejects the pair as duplicates — after paying for a full IMPACT run.
 
-Measured on the real lattice:
+Resolution: compute the overlap after construction and unregister it from the **downstream** stage.
+The upstream stage owns those PVs because it is the stage that actually tracks the beam to that
+plane. `lume.actions` exposes `unregister_action_variable(name)` and `supported_variables` is a
+property over `_action_variable_by_name`, so this is clean public API. Measured on a real Bmad model:
+318 vars → 312 after removal, model still functional.
 
-| Bmad `start_element` | n_vars | `YAGS:IN20:351:*` PVs |
-|---|---|---|
-| `YAG03` | 292 | 6 |
-| `DL02A2` | 286 | 0 |
+This lets the handoff be named for the real element (`YAG03`) rather than the drift after it. An
+earlier draft instead moved the downstream start to `element_after[handoff]` (`DL02A2`); that dict is
+gone. It also explains `start_element="DL02A2"` in `examples/staged_example.ipynb` — a workaround for
+this collision, no longer needed.
 
-So `DL02A2` in `examples/staged_example.ipynb` was **not** arbitrary and not merely a naming
-inconsistency — it is a deliberate workaround for this collision. An earlier draft of this document
-mischaracterised it as a rename opportunity; that was wrong.
+**Safety rule:** a *writable* overlap raises rather than being dropped. Writable overlap means both
+stages are driving the same magnet — extents overlapping rather than meeting at a plane — and
+dropping it downstream would leave that stage tracking with a stale value. The real YAG03 overlap was
+measured to be entirely read-only, so this does not fire in normal use.
 
-The rule: if the upstream and downstream stages both image the handoff diagnostic, the downstream
-stage starts at `element_after[handoff]` instead. Surrogates set `images_diagnostics=False` (they
-publish only `XRMS`/`YRMS` scalars), so surrogate → Bmad hands off *at* the diagnostic and needs no
-skip — which is why the existing `get_cu_hxr_staged_model` works with `start_element="OTR2"`.
-
-`element_after` was generated from the lattice and each value verified so that its entrance face
-sits exactly at the screen's `s` (Bmad's `s` is the exit face, which is why the drift *after* a
-screen begins at the screen). `OTR11` and `OTR21` are omitted because both are followed by an
-element named `DDG4`, which is ambiguous in the lattice and so unusable as a slice start; the error
-message names the field to edit if anyone hits that case.
+**Caveat:** the only staged path runnable without the IMPACT-T binary does not exercise this.
+Measured overlap between `surrogate_cu_inj` and `bmad_cu_hxr` is **zero** — the surrogate publishes
+`OTRS:IN20:571:XRMS`/`YRMS` while Bmad publishes `Image:*`/`RESOLUTION`/`X`.
 
 **C4 — beam handoff mechanics.** One place, in the registry, resolving an existing inconsistency:
 `get_facet_staged_model` writes `final_particles` to a `NamedTemporaryFile` and passes it as

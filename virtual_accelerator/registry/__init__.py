@@ -8,11 +8,14 @@ model = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03")
 """
 
 import importlib
+import logging
 from typing import Any
 
 from virtual_accelerator.registry.models import MODELS, ModelEntry
 
-__all__ = ["get_model", "models_available", "list_models", "list_diagnostics"]
+logger = logging.getLogger(__name__)
+
+__all__ = ["get_model", "models_available", "list_models", "list_handoff_points"]
 
 
 class _ModelCatalog(dict):
@@ -40,9 +43,12 @@ def list_models(facility: str | None = None, engine: str | None = None) -> list[
     ]
 
 
-def list_diagnostics(model_name: str) -> tuple[str, ...]:
-    """Diagnostics usable as start/end/handoff points, in lattice order."""
-    return _entry(model_name).diagnostics
+def list_handoff_points(model_name: str) -> tuple[str, ...]:
+    """Suggested start/end/handoff elements, in lattice order.
+
+    A discovery aid, not an exhaustive list -- any lattice element may be used.
+    """
+    return _entry(model_name).handoff_points
 
 
 def _entry(name: str) -> ModelEntry:
@@ -73,9 +79,8 @@ def _normalize(name: str | None) -> str | None:
 
     Lattice element names are upper case everywhere. Tao is case-insensitive so a
     lower-case name would appear to work, but IMPACT's ``impact.ele[...]`` is a
-    plain dict lookup, and more importantly the registry's own diagnostics and
-    ``element_after`` lookups would silently miss -- which would defeat the
-    handoff collision check in ``_downstream_start``.
+    plain dict lookup, and the registry's own ``handoff_points`` and
+    ``element_aliases`` lookups would silently miss.
     """
     return name if name is None else name.upper()
 
@@ -86,19 +91,20 @@ def _resolve_element(entry: ModelEntry, name: str) -> str:
 
 
 def _check_element(entry: ModelEntry, name: str, role: str) -> None:
-    """Validate a handoff element. Non-diagnostic names are allowed through.
+    """Validate a start/end/handoff element.
 
-    Markers and drifts (END, TD11, DL02A2) are legitimate start/end elements but
-    are deliberately not enumerated, so only reject a name that looks like a
-    diagnostic this model does not have.
+    Any element in the underlying lattice is allowed, so this cannot be an
+    exhaustive check -- quads, markers and drifts are all legitimate and there are
+    thousands of them. Screens *are* enumerated exhaustively though, so a
+    screen-shaped name missing from ``handoff_points`` is a typo worth catching
+    early rather than letting it fail deep inside Tao.
     """
-    if name in entry.diagnostics:
+    if name in entry.handoff_points:
         return
-    looks_like_diagnostic = name.startswith(("OTR", "YAG", "PR"))
-    if looks_like_diagnostic:
+    if name.startswith(("OTR", "YAG", "PR")):
         raise ValueError(
-            f"{name!r} is not an available {role} diagnostic for {entry.name!r}. "
-            f"Available: {', '.join(entry.diagnostics)}"
+            f"{name!r} is not an available {role} screen for {entry.name!r}. "
+            f"Suggested points: {', '.join(entry.handoff_points)}"
         )
 
 
@@ -222,28 +228,54 @@ def _validate_pair(upstream: ModelEntry, downstream: ModelEntry, handoff: str) -
     _check_element(downstream, handoff, "start")
 
 
-def _downstream_start(
-    upstream: ModelEntry, downstream: ModelEntry, handoff: str
-) -> str:
-    """Where the downstream stage should actually begin tracking.
+def _strip_overlapping_variables(upstream, downstream, upstream_name, downstream_name):
+    """Remove variables the downstream stage shares with the upstream stage.
 
-    If both stages image the handoff diagnostic they would publish identical
-    screen PVs and StagedModel would reject the pair, so the downstream stage
-    starts at the element immediately after it instead.
+    Both stages include the handoff element, so both publish its PVs and
+    ``StagedModel`` would reject the pair as duplicates. The upstream stage owns
+    them -- it is the stage that actually tracks the beam to that plane -- so they
+    are unregistered from the downstream stage.
+
+    A *writable* overlap means something different and worse: both stages would be
+    driving the same magnet, and dropping it downstream would silently leave that
+    stage tracking with a stale value. That is a slicing error, so it raises.
     """
-    both_image = upstream.images_diagnostics and downstream.images_diagnostics
-    if not (both_image and handoff in downstream.diagnostics):
-        return handoff
+    from lume.actions import WritableActionMixin
 
-    try:
-        return downstream.element_after[handoff]
-    except KeyError:
+    downstream_vars = downstream.supported_variables
+    overlap = sorted(set(upstream.supported_variables) & set(downstream_vars))
+    if not overlap:
+        return []
+
+    writable = [
+        name
+        for name in overlap
+        if isinstance(downstream_vars[name], WritableActionMixin)
+    ]
+    if writable:
         raise ValueError(
-            f"Both {upstream.name!r} and {downstream.name!r} image {handoff!r}, so "
-            f"{downstream.name!r} must start just after it, but no downstream element "
-            f"is recorded for {handoff!r}. Add it to {downstream.name}.element_after "
-            "in virtual_accelerator/registry/models.py."
-        ) from None
+            f"{upstream_name!r} and {downstream_name!r} both control "
+            f"{len(writable)} writable variable(s), so their extents overlap rather "
+            f"than meeting at a plane: {', '.join(writable[:5])}"
+            f"{' ...' if len(writable) > 5 else ''}. Check the handoff element."
+        )
+
+    if not hasattr(downstream, "unregister_action_variable"):
+        raise TypeError(
+            f"{downstream_name!r} shares {len(overlap)} variable(s) with "
+            f"{upstream_name!r} but does not support unregister_action_variable, so "
+            "the duplicates cannot be resolved."
+        )
+
+    for name in overlap:
+        downstream.unregister_action_variable(name)
+    logger.debug(
+        "Removed %d variable(s) from %s already provided by %s",
+        len(overlap),
+        downstream_name,
+        upstream_name,
+    )
+    return overlap
 
 
 def get_model(
@@ -291,11 +323,7 @@ def get_model(
 
     stages = []
     for i, entry in enumerate(entries):
-        stage_start = (
-            start_ele
-            if i == 0
-            else _downstream_start(entries[i - 1], entry, handoffs[i - 1])
-        )
+        stage_start = start_ele if i == 0 else handoffs[i - 1]
         stage_end = end_ele if i == len(entries) - 1 else handoffs[i]
 
         stage_kwargs = dict(routed[i])
@@ -312,6 +340,13 @@ def get_model(
                 stage_start if entry.start_param else None,
                 stage_end if entry.end_param else None,
             )
+        )
+
+    # Both stages include the handoff element and so publish its PVs. Resolve the
+    # duplicates before StagedModel validation, which would otherwise reject them.
+    for i in range(1, len(stages)):
+        _strip_overlapping_variables(
+            stages[i - 1], stages[i], entries[i - 1].name, entries[i].name
         )
 
     from lume.staged_model import StagedModel
