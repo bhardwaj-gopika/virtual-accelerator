@@ -27,12 +27,12 @@ class TestDiscovery:
         assert len(text.splitlines()) == len(MODELS)
 
     def test_filter_by_engine_and_facility(self):
-        assert list_models(engine="bmad") == ["bmad_cu_hxr"]
+        assert list_models(engine="bmad") == ["bmad_cu_hxr_yag03", "bmad_cu_hxr_otr2"]
         assert set(list_models(facility="lcls")) == set(MODELS)
         assert list_models(facility="facet2") == []
 
     def test_handoff_points_are_lattice_ordered(self):
-        diags = list_handoff_points("bmad_cu_hxr")
+        diags = list_handoff_points("bmad_cu_hxr_otr2")
         assert diags.index("YAG02") < diags.index("YAG03") < diags.index("OTR2")
 
     def test_impact_omits_unavailable_screens(self):
@@ -86,7 +86,7 @@ class TestValidation:
 
     def test_rejects_impact_as_downstream_stage(self):
         with pytest.raises(ValueError, match="only start at the cathode"):
-            get_model(["bmad_cu_hxr", "impact_cu_inj"], handoff_loc="OTR2")
+            get_model(["bmad_cu_hxr_otr2", "impact_cu_inj"], handoff_loc="OTR2")
 
     def test_rejects_start_ele_on_fixed_extent_model(self):
         with pytest.raises(ValueError, match="fixed start"):
@@ -94,17 +94,28 @@ class TestValidation:
 
     def test_rejects_single_model_list(self):
         with pytest.raises(ValueError, match="at least two models"):
-            get_model(["bmad_cu_hxr"])
+            get_model(["bmad_cu_hxr_otr2"])
 
     def test_rejects_wrong_handoff_count(self):
         with pytest.raises(ValueError, match="handoff location"):
-            get_model(["surrogate_cu_inj", "bmad_cu_hxr"], handoff_loc=["OTR2", "OTR3"])
+            get_model(
+                ["surrogate_cu_inj", "bmad_cu_hxr_otr2"], handoff_loc=["OTR2", "OTR3"]
+            )
+
+    def test_rejects_mismatched_injector_and_linac_pairing(self):
+        # impact ends at YAG03; bmad_cu_hxr_otr2 starts at OTR2 -> 9.6 m gap.
+        with pytest.raises(ValueError, match="bmad_cu_hxr_yag03"):
+            get_model(["impact_cu_inj", "bmad_cu_hxr_otr2"])
+
+    def test_rejects_surrogate_paired_with_yag03_linac(self):
+        with pytest.raises(ValueError, match="bmad_cu_hxr_otr2"):
+            get_model(["surrogate_cu_inj", "bmad_cu_hxr_yag03"])
 
 
 class TestKwargRouting:
     def test_unknown_kwarg_rejected(self):
         with pytest.raises(ValueError, match="not a parameter of any stage"):
-            _route_kwargs([MODELS["bmad_cu_hxr"]], {"n_particle": 5})
+            _route_kwargs([MODELS["bmad_cu_hxr_otr2"]], {"n_particle": 5})
 
     def test_broadcast_reaches_every_declaring_stage(self):
         entries = [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]]
@@ -112,7 +123,7 @@ class TestKwargRouting:
         assert routed == [{"n_particles": 42}, {"n_particles": 42}]
 
     def test_routes_to_single_declaring_stage(self):
-        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr_otr2"]]
         routed = _route_kwargs(entries, {"track_beam": True})
         assert routed == [{}, {"track_beam": True}]
 
@@ -123,20 +134,20 @@ class TestKwargRouting:
 
     def test_dotted_form_rejects_unknown_stage(self):
         with pytest.raises(ValueError, match="not in this model"):
-            _route_kwargs([MODELS["bmad_cu_hxr"]], {"nope.track_beam": True})
+            _route_kwargs([MODELS["bmad_cu_hxr_otr2"]], {"nope.track_beam": True})
 
     def test_dotted_form_rejects_unknown_param(self):
         with pytest.raises(ValueError, match="not a parameter of"):
-            _route_kwargs([MODELS["bmad_cu_hxr"]], {"bmad_cu_hxr.bogus": 1})
+            _route_kwargs([MODELS["bmad_cu_hxr_otr2"]], {"bmad_cu_hxr_otr2.bogus": 1})
 
 
 class TestHandoffResolution:
     def test_inferred_from_upstream_fixed_end(self):
-        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr_otr2"]]
         assert _resolve_handoffs(entries, None) == ["OTR2"]
 
     def test_explicit_handoff_is_used_verbatim(self):
-        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr_yag03"]]
         assert _resolve_handoffs(entries, "YAG03") == ["YAG03"]
 
 
@@ -236,6 +247,6 @@ class TestElementNameCase:
         assert "not an available" not in str(excinfo.value)
 
     def test_lowercase_handoff_normalises_before_resolution(self):
-        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr_yag03"]]
         handoffs = [_normalize(h) for h in _resolve_handoffs(entries, "yag03")]
         assert handoffs == ["YAG03"]

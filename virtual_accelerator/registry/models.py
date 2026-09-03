@@ -80,32 +80,23 @@ _ALL_CU_HXR_SCREENS = (
     "OTRDMP",
 )
 
-MODELS: dict[str, ModelEntry] = {
-    "impact_cu_inj": ModelEntry(
-        name="impact_cu_inj",
-        description="IMPACT-T LCLS injector, cathode -> OTR2",
-        facility="lcls",
-        engine="impact",
-        builder="virtual_accelerator.models.cu_hxr:get_cu_inj_impact_model",
-        extras=("impact",),
-        params={"n_particles": 100, "end_element": "OTR2"},
-        # YAG01 and OTR3 exist in the deck but their lines are commented out;
-        # OTR4 is past stop_1 at z=16.5.
-        handoff_points=("CATHODE", "YAG02", "YAG03", "OTR1", "OTR2"),
-        end_param="end_element",
-        default_end="OTR2",
-        broadcast_params=frozenset({"n_particles"}),
-        element_aliases={"CATHODE": "GUN"},
-    ),
-    "bmad_cu_hxr": ModelEntry(
-        name="bmad_cu_hxr",
-        description="Bmad CU-HXR, gun -> undulator/dump",
+
+def _bmad_cu_hxr(name: str, start: str, note: str) -> ModelEntry:
+    """One Bmad CU-HXR entry per standard handoff plane.
+
+    LCLS needs two because its two injector models end at different planes and
+    neither can move: the NN surrogate predicts OTRS:IN20:571 (OTR2) at 135 MeV
+    and cannot produce a beam at YAG03, which sits before L0B at 64 MeV.
+    """
+    return ModelEntry(
+        name=name,
+        description=f"Bmad CU-HXR linac, {start} -> END ({note})",
         facility="lcls",
         engine="bmad",
         builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_bmad_model",
         extras=("bmad",),
         params={
-            "start_element": "OTR2",
+            "start_element": start,
             "end_element": "END",
             "track_beam": False,
             "custom_beam_path": None,
@@ -113,8 +104,33 @@ MODELS: dict[str, ModelEntry] = {
         handoff_points=("CATHODE", *_ALL_CU_HXR_SCREENS, "END"),
         start_param="start_element",
         end_param="end_element",
-        default_start="OTR2",
+        default_start=start,
         default_end="END",
+    )
+
+
+MODELS: dict[str, ModelEntry] = {
+    "impact_cu_inj": ModelEntry(
+        name="impact_cu_inj",
+        description="IMPACT-T LCLS injector, cathode -> YAG03",
+        facility="lcls",
+        engine="impact",
+        builder="virtual_accelerator.models.cu_hxr:get_cu_inj_impact_model",
+        extras=("impact",),
+        params={"n_particles": 100, "end_element": "YAG03"},
+        # YAG01 and OTR3 exist in the deck but their lines are commented out;
+        # OTR4 is past stop_1 at z=16.5.
+        handoff_points=("CATHODE", "YAG02", "YAG03", "OTR1", "OTR2"),
+        end_param="end_element",
+        default_end="YAG03",
+        broadcast_params=frozenset({"n_particles"}),
+        element_aliases={"CATHODE": "GUN"},
+    ),
+    "bmad_cu_hxr_yag03": _bmad_cu_hxr(
+        "bmad_cu_hxr_yag03", "YAG03", "pairs with impact_cu_inj"
+    ),
+    "bmad_cu_hxr_otr2": _bmad_cu_hxr(
+        "bmad_cu_hxr_otr2", "OTR2", "pairs with surrogate_cu_inj"
     ),
     "surrogate_cu_inj": ModelEntry(
         name="surrogate_cu_inj",

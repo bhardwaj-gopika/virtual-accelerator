@@ -227,6 +227,22 @@ def _validate_pair(upstream: ModelEntry, downstream: ModelEntry, handoff: str) -
     _check_element(upstream, handoff, "end")
     _check_element(downstream, handoff, "start")
 
+    # Each linac model is registered for one standard handoff plane, so a mismatch
+    # means the wrong pair was chosen -- silently re-slicing would leave a gap.
+    if downstream.default_start is not None and handoff != downstream.default_start:
+        alternatives = [
+            name
+            for name, entry in MODELS.items()
+            if entry.facility == downstream.facility
+            and entry.engine == downstream.engine
+            and entry.default_start == handoff
+        ]
+        hint = f" Use {alternatives[0]!r} instead." if alternatives else ""
+        raise ValueError(
+            f"{upstream.name!r} hands off at {handoff!r} but {downstream.name!r} "
+            f"starts at {downstream.default_start!r}.{hint}"
+        )
+
 
 def _strip_overlapping_variables(upstream, downstream, upstream_name, downstream_name):
     """Remove variables the downstream stage shares with the upstream stage.
