@@ -4,7 +4,7 @@ The virtual_accelerator.registry module provides a unified interface for loading
 
 ### Installation
 ```bash
-pip install git+https://github.com/lume-science/lume-base.git
+pip install git+https://github.com/slaclab/virtual-accelerator
 ```
 
 ### Quick Start
@@ -96,6 +96,7 @@ surrogate_cu_inj → bmad_cu_hxr_otr2
 ```
 
 impact_cu_inj → bmad_cu_hxr_yag03
+
 When impact_cu_inj is the upstream model, use bmad_cu_hxr_yag03 (which starts at YAG03) and specify handoff_loc:
 
 ```python
