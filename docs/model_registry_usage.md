@@ -4,7 +4,7 @@ The virtual_accelerator.registry module provides a unified interface for loading
 
 ### Installation
 ```bash
-pip install git+https://github.com/slaclab/virtual-accelerator
+pip install git+https://github.com/slaclab/virtual-accelerator.git
 ```
 
 ### Quick Start
