@@ -81,34 +81,6 @@ _ALL_CU_HXR_SCREENS = (
 )
 
 
-def _bmad_cu_hxr(name: str, start: str, note: str) -> ModelEntry:
-    """One Bmad CU-HXR entry per standard handoff plane.
-
-    LCLS needs two because its two injector models end at different planes and
-    neither can move: the NN surrogate predicts OTRS:IN20:571 (OTR2) at 135 MeV
-    and cannot produce a beam at YAG03, which sits before L0B at 64 MeV.
-    """
-    return ModelEntry(
-        name=name,
-        description=f"Bmad CU-HXR linac, {start} -> END ({note})",
-        facility="lcls",
-        engine="bmad",
-        builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_bmad_model",
-        extras=("bmad",),
-        params={
-            "start_element": start,
-            "end_element": "END",
-            "track_beam": False,
-            "custom_beam_path": None,
-        },
-        handoff_points=("CATHODE", *_ALL_CU_HXR_SCREENS, "END"),
-        start_param="start_element",
-        end_param="end_element",
-        default_start=start,
-        default_end="END",
-    )
-
-
 MODELS: dict[str, ModelEntry] = {
     "impact_cu_inj": ModelEntry(
         name="impact_cu_inj",
@@ -120,21 +92,36 @@ MODELS: dict[str, ModelEntry] = {
         params={"n_particles": 100, "end_element": "YAG03"},
         # YAG01 and OTR3 exist in the deck but their lines are commented out;
         # OTR4 is past stop_1 at z=16.5.
-        handoff_points=("CATHODE", "YAG02", "YAG03", "OTR1", "OTR2"),
+        handoff_points=("CATHODE", "YAG02", "YAG03"),
         end_param="end_element",
         default_end="YAG03",
         broadcast_params=frozenset({"n_particles"}),
         element_aliases={"CATHODE": "GUN"},
     ),
-    "bmad_cu_hxr_yag03": _bmad_cu_hxr(
-        "bmad_cu_hxr_yag03", "YAG03", "pairs with impact_cu_inj"
-    ),
-    "bmad_cu_hxr_otr2": _bmad_cu_hxr(
-        "bmad_cu_hxr_otr2", "OTR2", "pairs with surrogate_cu_inj"
+    "bmad_cu_hxr": ModelEntry(
+        name="bmad_cu_hxr",
+        description="Bmad CU-HXR linac, injector handoff -> END",
+        facility="lcls",
+        engine="bmad",
+        builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_bmad_model",
+        extras=("bmad",),
+        params={
+            "start_element": "OTR2",
+            "end_element": "END",
+            "track_beam": False,
+            "custom_beam_path": None,
+        },
+        # Starts wherever the upstream injector hands off: YAG03 from
+        # impact_cu_inj, OTR2 from surrogate_cu_inj.
+        handoff_points=("CATHODE", *_ALL_CU_HXR_SCREENS, "END"),
+        start_param="start_element",
+        end_param="end_element",
+        default_start="OTR2",
+        default_end="END",
     ),
     "surrogate_cu_inj": ModelEntry(
         name="surrogate_cu_inj",
-        description="NN LCLS injector surrogate, fixed cathode -> OTR2",
+        description="NN LCLS injector surrogate, cathode -> OTR2",
         facility="lcls",
         engine="surrogate",
         builder=(
@@ -148,13 +135,13 @@ MODELS: dict[str, ModelEntry] = {
     ),
     "cheetah_cu_hxr": ModelEntry(
         name="cheetah_cu_hxr",
-        description="Cheetah nc_hxr",
+        description="Cheetah nc_hxr, cathode -> END",
         facility="lcls",
         engine="cheetah",
         builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_cheetah_model",
         extras=("cheetah",),
         params={"n_particles": 1000},
-        handoff_points=(),
+        handoff_points=("CATHODE", "END"),
         broadcast_params=frozenset({"n_particles"}),
     ),
 }

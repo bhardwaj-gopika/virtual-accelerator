@@ -15,7 +15,13 @@ from virtual_accelerator.registry.models import MODELS, ModelEntry
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["get_model", "models_available", "list_models", "list_handoff_points"]
+__all__ = [
+    "get_model",
+    "models_available",
+    "list_models",
+    "list_handoff_points",
+    "common_handoff_points",
+]
 
 
 class _ModelCatalog(dict):
@@ -49,6 +55,50 @@ def list_handoff_points(model_name: str) -> tuple[str, ...]:
     A discovery aid, not an exhaustive list -- any lattice element may be used.
     """
     return _entry(model_name).handoff_points
+
+
+CATHODE = "CATHODE"
+"""Start-of-machine marker. Never a valid handoff: nothing is upstream of it."""
+
+
+def common_handoff_points(*model_names: str) -> tuple[str, ...]:
+    """Elements every named model can hand off at, in lattice order.
+
+    ``CATHODE`` is always excluded -- it marks the front of the machine, so
+    nothing can hand over to a stage that begins there.
+
+    This is the set intersection, not the union. A union would admit planes only
+    one stage can reach: ``impact_cu_inj`` stops by z=16.5 m and so cannot reach
+    ``OTR4`` at 17.80 m, but ``bmad_cu_hxr`` lists it, so the union would wrongly
+    accept ``handoff_loc="OTR4"`` for that pair.
+
+    Parameters
+    ----------
+    *model_names
+        Two or more registry names.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Shared handoff elements, ordered by the first model's lattice order.
+
+    Examples
+    --------
+    >>> common_handoff_points("impact_cu_inj", "bmad_cu_hxr")
+    ('YAG02', 'YAG03')
+    >>> common_handoff_points("surrogate_cu_inj", "bmad_cu_hxr")
+    ('OTR2',)
+    """
+    if len(model_names) < 2:
+        raise ValueError("Need at least two models to find common handoff points.")
+
+    entries = [_entry(name) for name in model_names]
+    shared = set(entries[0].handoff_points)
+    for entry in entries[1:]:
+        shared &= set(entry.handoff_points)
+    shared.discard(CATHODE)
+
+    return tuple(name for name in entries[0].handoff_points if name in shared)
 
 
 def _entry(name: str) -> ModelEntry:
@@ -224,23 +274,16 @@ def _validate_pair(upstream: ModelEntry, downstream: ModelEntry, handoff: str) -
         )
         raise ValueError(f"{downstream.name!r} cannot be a downstream stage: {reason}.")
 
-    _check_element(upstream, handoff, "end")
-    _check_element(downstream, handoff, "start")
-
-    # Each linac model is registered for one standard handoff plane, so a mismatch
-    # means the wrong pair was chosen -- silently re-slicing would leave a gap.
-    if downstream.default_start is not None and handoff != downstream.default_start:
-        alternatives = [
-            name
-            for name, entry in MODELS.items()
-            if entry.facility == downstream.facility
-            and entry.engine == downstream.engine
-            and entry.default_start == handoff
-        ]
-        hint = f" Use {alternatives[0]!r} instead." if alternatives else ""
+    if handoff == CATHODE:
         raise ValueError(
-            f"{upstream.name!r} hands off at {handoff!r} but {downstream.name!r} "
-            f"starts at {downstream.default_start!r}.{hint}"
+            f"{CATHODE!r} cannot be a handoff location: nothing is upstream of it."
+        )
+
+    shared = common_handoff_points(upstream.name, downstream.name)
+    if handoff not in shared:
+        raise ValueError(
+            f"{handoff!r} is not a shared handoff point for {upstream.name!r} -> "
+            f"{downstream.name!r}. Available: {', '.join(shared) or 'none'}"
         )
 
 
@@ -309,8 +352,9 @@ def get_model(
     spec
         A registry name, or an ordered list of names to stage together.
     handoff_loc
-        Element where each consecutive pair hands the beam over. Inferred from
-        the upstream stage's fixed end when it has one. A list is required for
+        Element where each consecutive pair hands the beam over. Inferred from the
+        upstream stage's standard end when omitted. Must be a shared handoff point
+        of both stages -- see :func:`common_handoff_points`. A list is required for
         more than two stages.
     start_ele, end_ele
         Overall extent. For a staged model these apply to the first and last
@@ -318,6 +362,38 @@ def get_model(
     **kwargs
         Builder parameters. For staged models, qualify an ambiguous parameter as
         ``"<model_name>.<param>"``.
+
+    Returns
+    -------
+    LUMEModel
+        A single model, or a ``StagedModel`` wrapping the chain.
+
+    Notes
+    -----
+    For staged chains this handles two things that are easy to get wrong by hand.
+
+    **Duplicate variables at the handoff are removed automatically.** Both stages
+    include the handoff element, so both publish its PVs -- an IMPACT model stopped
+    at ``YAG03`` keeps the screen (it prunes to ``s <= stop``) and so does a Bmad
+    model sliced from ``YAG03``. ``StagedModel`` would reject the pair as
+    duplicates. The upstream stage owns them, because it is the stage that tracks
+    the beam to that plane, so they are unregistered from the downstream stage
+    before the chain is assembled. A *writable* overlap raises instead: that means
+    both stages drive the same magnet, so their extents overlap rather than meeting
+    at a plane, and dropping it downstream would leave that stage tracking a stale
+    value.
+
+    **Beam tracking is forced on for every stage that supports it**, since a
+    non-final stage must produce ``final_particles`` and a non-first stage must
+    accept ``initial_particles``.
+
+    Examples
+    --------
+    >>> get_model("bmad_cu_hxr", end_ele="TD11")               # doctest: +SKIP
+    >>> get_model(["surrogate_cu_inj", "bmad_cu_hxr"],         # doctest: +SKIP
+    ...           end_ele="OTR4", n_particles=500)
+    >>> get_model(["impact_cu_inj", "bmad_cu_hxr"],            # doctest: +SKIP
+    ...           handoff_loc="YAG03", end_ele="TD11")
     """
     start_ele, end_ele = _normalize(start_ele), _normalize(end_ele)
 

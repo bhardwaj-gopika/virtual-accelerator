@@ -9,6 +9,7 @@ from virtual_accelerator.registry import (
     _resolve_handoffs,
     _route_kwargs,
     _strip_overlapping_variables,
+    common_handoff_points,
     get_model,
     list_handoff_points,
     list_models,
@@ -27,19 +28,21 @@ class TestDiscovery:
         assert len(text.splitlines()) == len(MODELS)
 
     def test_filter_by_engine_and_facility(self):
-        assert list_models(engine="bmad") == ["bmad_cu_hxr_yag03", "bmad_cu_hxr_otr2"]
+        assert list_models(engine="bmad") == ["bmad_cu_hxr"]
         assert set(list_models(facility="lcls")) == set(MODELS)
         assert list_models(facility="facet2") == []
 
     def test_handoff_points_are_lattice_ordered(self):
-        diags = list_handoff_points("bmad_cu_hxr_otr2")
+        diags = list_handoff_points("bmad_cu_hxr")
         assert diags.index("YAG02") < diags.index("YAG03") < diags.index("OTR2")
 
-    def test_impact_omits_unavailable_screens(self):
-        # YAG01/OTR3 are commented out in the deck; OTR4 is past stop_1.
+    def test_impact_lists_only_its_standard_extent(self):
+        # Standard injector extent is cathode -> YAG03. Screens further downstream
+        # are excluded: YAG01/OTR3 are commented out in the deck, OTR4 is past
+        # stop_1 at z=16.5, and OTR1/OTR2 are past the standard handoff.
         diags = list_handoff_points("impact_cu_inj")
-        assert "OTR2" in diags
-        for absent in ("YAG01", "OTR3", "OTR4"):
+        assert diags == ("CATHODE", "YAG02", "YAG03")
+        for absent in ("YAG01", "OTR1", "OTR2", "OTR3", "OTR4"):
             assert absent not in diags
 
 
@@ -86,7 +89,7 @@ class TestValidation:
 
     def test_rejects_impact_as_downstream_stage(self):
         with pytest.raises(ValueError, match="only start at the cathode"):
-            get_model(["bmad_cu_hxr_otr2", "impact_cu_inj"], handoff_loc="OTR2")
+            get_model(["bmad_cu_hxr", "impact_cu_inj"], handoff_loc="OTR2")
 
     def test_rejects_start_ele_on_fixed_extent_model(self):
         with pytest.raises(ValueError, match="fixed start"):
@@ -94,28 +97,26 @@ class TestValidation:
 
     def test_rejects_single_model_list(self):
         with pytest.raises(ValueError, match="at least two models"):
-            get_model(["bmad_cu_hxr_otr2"])
+            get_model(["bmad_cu_hxr"])
 
     def test_rejects_wrong_handoff_count(self):
         with pytest.raises(ValueError, match="handoff location"):
-            get_model(
-                ["surrogate_cu_inj", "bmad_cu_hxr_otr2"], handoff_loc=["OTR2", "OTR3"]
-            )
+            get_model(["surrogate_cu_inj", "bmad_cu_hxr"], handoff_loc=["OTR2", "OTR3"])
 
-    def test_rejects_mismatched_injector_and_linac_pairing(self):
-        # impact ends at YAG03; bmad_cu_hxr_otr2 starts at OTR2 -> 9.6 m gap.
-        with pytest.raises(ValueError, match="bmad_cu_hxr_yag03"):
-            get_model(["impact_cu_inj", "bmad_cu_hxr_otr2"])
+    def test_rejects_cathode_as_handoff(self):
+        with pytest.raises(ValueError, match="nothing is upstream"):
+            get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="CATHODE")
 
-    def test_rejects_surrogate_paired_with_yag03_linac(self):
-        with pytest.raises(ValueError, match="bmad_cu_hxr_otr2"):
-            get_model(["surrogate_cu_inj", "bmad_cu_hxr_yag03"])
+    def test_rejects_handoff_not_shared_by_both_stages(self):
+        # OTR4 is past impact_cu_inj's stop at z=16.5, so it cannot hand off there.
+        with pytest.raises(ValueError, match="not a shared handoff point"):
+            get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="OTR4")
 
 
 class TestKwargRouting:
     def test_unknown_kwarg_rejected(self):
         with pytest.raises(ValueError, match="not a parameter of any stage"):
-            _route_kwargs([MODELS["bmad_cu_hxr_otr2"]], {"n_particle": 5})
+            _route_kwargs([MODELS["bmad_cu_hxr"]], {"n_particle": 5})
 
     def test_broadcast_reaches_every_declaring_stage(self):
         entries = [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]]
@@ -123,7 +124,7 @@ class TestKwargRouting:
         assert routed == [{"n_particles": 42}, {"n_particles": 42}]
 
     def test_routes_to_single_declaring_stage(self):
-        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr_otr2"]]
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
         routed = _route_kwargs(entries, {"track_beam": True})
         assert routed == [{}, {"track_beam": True}]
 
@@ -134,21 +135,59 @@ class TestKwargRouting:
 
     def test_dotted_form_rejects_unknown_stage(self):
         with pytest.raises(ValueError, match="not in this model"):
-            _route_kwargs([MODELS["bmad_cu_hxr_otr2"]], {"nope.track_beam": True})
+            _route_kwargs([MODELS["bmad_cu_hxr"]], {"nope.track_beam": True})
 
     def test_dotted_form_rejects_unknown_param(self):
         with pytest.raises(ValueError, match="not a parameter of"):
-            _route_kwargs([MODELS["bmad_cu_hxr_otr2"]], {"bmad_cu_hxr_otr2.bogus": 1})
+            _route_kwargs([MODELS["bmad_cu_hxr"]], {"bmad_cu_hxr.bogus": 1})
 
 
 class TestHandoffResolution:
     def test_inferred_from_upstream_fixed_end(self):
-        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr_otr2"]]
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
         assert _resolve_handoffs(entries, None) == ["OTR2"]
 
     def test_explicit_handoff_is_used_verbatim(self):
-        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr_yag03"]]
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
         assert _resolve_handoffs(entries, "YAG03") == ["YAG03"]
+
+
+class TestCommonHandoffPoints:
+    def test_intersection_of_the_two_standard_chains(self):
+        assert common_handoff_points("impact_cu_inj", "bmad_cu_hxr") == (
+            "YAG02",
+            "YAG03",
+        )
+        assert common_handoff_points("surrogate_cu_inj", "bmad_cu_hxr") == ("OTR2",)
+
+    def test_cathode_is_always_excluded(self):
+        # CATHODE is in both models' handoff_points but is never a valid handoff.
+        assert "CATHODE" in MODELS["impact_cu_inj"].handoff_points
+        assert "CATHODE" in MODELS["bmad_cu_hxr"].handoff_points
+        assert "CATHODE" not in common_handoff_points("impact_cu_inj", "bmad_cu_hxr")
+
+    def test_is_intersection_not_union(self):
+        # OTR4 is only reachable by bmad_cu_hxr; a union would wrongly include it.
+        shared = common_handoff_points("impact_cu_inj", "bmad_cu_hxr")
+        assert "OTR4" in MODELS["bmad_cu_hxr"].handoff_points
+        assert "OTR4" not in shared
+
+    def test_ordered_by_lattice_position(self):
+        shared = common_handoff_points("impact_cu_inj", "bmad_cu_hxr")
+        assert list(shared) == sorted(
+            shared, key=MODELS["impact_cu_inj"].handoff_points.index
+        )
+
+    def test_no_shared_points_gives_empty_tuple(self):
+        assert common_handoff_points("cheetah_cu_hxr", "bmad_cu_hxr") == ()
+
+    def test_requires_at_least_two_models(self):
+        with pytest.raises(ValueError, match="at least two models"):
+            common_handoff_points("bmad_cu_hxr")
+
+    def test_unknown_model_name(self):
+        with pytest.raises(KeyError, match="Unknown model"):
+            common_handoff_points("impact_cu_inj", "nope")
 
 
 class _FakeStage:
@@ -247,6 +286,6 @@ class TestElementNameCase:
         assert "not an available" not in str(excinfo.value)
 
     def test_lowercase_handoff_normalises_before_resolution(self):
-        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr_yag03"]]
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
         handoffs = [_normalize(h) for h in _resolve_handoffs(entries, "yag03")]
         assert handoffs == ["YAG03"]
