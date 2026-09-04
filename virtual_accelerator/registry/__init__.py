@@ -129,15 +129,10 @@ def _normalize(name: str | None) -> str | None:
 
     Lattice element names are upper case everywhere. Tao is case-insensitive so a
     lower-case name would appear to work, but IMPACT's ``impact.ele[...]`` is a
-    plain dict lookup, and the registry's own ``handoff_points`` and
-    ``element_aliases`` lookups would silently miss.
+    plain dict lookup, and the registry's own ``handoff_points`` lookups would
+    silently miss.
     """
     return name if name is None else name.upper()
-
-
-def _resolve_element(entry: ModelEntry, name: str) -> str:
-    """Translate a standard element name into this model's engine-local name."""
-    return entry.element_aliases.get(name, name)
 
 
 def _check_element(entry: ModelEntry, name: str, role: str) -> None:
@@ -178,6 +173,11 @@ def _route_kwargs(
                     f"Stages: {', '.join(by_name)}"
                 )
             index = by_name[stage_name]
+            # Accept the get_model spelling per stage, e.g. "bmad_cu_hxr.end_ele".
+            param = {
+                "start_ele": entries[index].start_param,
+                "end_ele": entries[index].end_param,
+            }.get(param, param)
             if param not in entries[index].params:
                 raise ValueError(
                     f"{param!r} is not a parameter of {stage_name!r}. "
@@ -220,7 +220,7 @@ def _build(
                 f"{entry.name!r} has a fixed start and does not accept start_ele."
             )
         _check_element(entry, start_ele, "start")
-        kwargs[entry.start_param] = _resolve_element(entry, start_ele)
+        kwargs[entry.start_param] = start_ele
 
     if end_ele is not None:
         if entry.end_param is None:
@@ -228,7 +228,7 @@ def _build(
                 f"{entry.name!r} has a fixed end and does not accept end_ele."
             )
         _check_element(entry, end_ele, "end")
-        kwargs[entry.end_param] = _resolve_element(entry, end_ele)
+        kwargs[entry.end_param] = end_ele
 
     return _load_builder(entry)(**kwargs)
 

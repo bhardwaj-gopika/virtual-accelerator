@@ -183,15 +183,70 @@ A *writable* overlap raises instead of being dropped. That means both stages dri
 same magnet — their extents overlap rather than meeting at a plane — and dropping it
 downstream would leave that stage tracking a stale value.
 
-## API Reference
-```get_model(spec, *, end_ele=None, start_ele=None, handoff_loc=None, n_particles=None)```
+### Targeting One Stage With kwargs
+Plain kwargs apply to whichever stage declares them. `n_particles` is a *broadcast*
+parameter, so it reaches every stage that accepts one; `start_ele` and `end_ele` apply to
+the first and last stage respectively.
 
-|Parameter | Type |	Description |\
-|spec |	str or list[str] |	Model ID or [upstream, downstream] pair|\
-|end_ele |	str |	Screen name to stop tracking at|\
-|start_ele | str | Screen name to start tracking from|\
-|handoff_loc |	str |	Explicit handoff point when chaining models|\
-|n_particles |	int	 | Number of macro-particles for beam tracking|
+To target a specific stage, prefix the parameter with the model ID:
+
+```python
+>>> m = get_model(
+...     ["impact_cu_inj", "bmad_cu_hxr"],
+...     handoff_loc="YAG03",
+...     **{"impact_cu_inj.n_particles": 200, "bmad_cu_hxr.end_ele": "TD11"},
+... )
+```
+
+The dotted form always wins and is never ambiguous. Both the `get_model` spelling
+(`end_ele`, `start_ele`) and the underlying builder spelling (`end_element`,
+`start_element`) are accepted:
+
+```python
+>>> "bmad_cu_hxr.end_ele"      # same as
+>>> "bmad_cu_hxr.end_element"
+```
+
+Ambiguity is an error rather than a guess. A non-broadcast parameter declared by more than
+one stage must be qualified:
+
+```python
+>>> get_model(["impact_cu_inj", "bmad_cu_hxr"], end_element="TD11")
+ValueError: 'end_element' is ambiguous across stages (impact_cu_inj, bmad_cu_hxr).
+Qualify it, e.g. "impact_cu_inj.end_element=...".
+```
+
+Unknown parameters are rejected outright, listing what is accepted:
+
+```python
+>>> get_model("bmad_cu_hxr", n_particle=5)
+ValueError: 'n_particle' is not a parameter of any stage.
+Accepted: custom_beam_path, end_element, start_element, track_beam
+```
+
+To see what a model accepts:
+
+```python
+>>> MODELS["bmad_cu_hxr"].params
+{'start_element': 'OTR2', 'end_element': 'END', 'track_beam': False, 'custom_beam_path': None}
+
+>>> MODELS["impact_cu_inj"].broadcast_params
+frozenset({'n_particles'})
+```
+
+## API Reference
+```get_model(spec, *, handoff_loc=None, start_ele=None, end_ele=None, **kwargs)```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `spec` | str or list[str] | Model ID, or `[upstream, downstream]` to chain |
+| `handoff_loc` | str | Where the stages exchange beam. Inferred from the upstream model's standard end when omitted. Must be in `common_handoff_points()` |
+| `start_ele` | str | Element to start tracking from (first stage) |
+| `end_ele` | str | Element to stop tracking at (last stage) |
+| `**kwargs` | any | Builder parameters. Prefix with `"<model_id>."` to target one stage |
+
+For staged chains `get_model()` also removes variables that both stages publish at the
+handoff, and forces beam tracking on for every stage that supports it.
 
 ```models_available```
 Printable summary of all registered models and their descriptions.

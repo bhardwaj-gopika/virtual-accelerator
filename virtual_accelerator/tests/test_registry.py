@@ -41,9 +41,16 @@ class TestDiscovery:
         # are excluded: YAG01/OTR3 are commented out in the deck, OTR4 is past
         # stop_1 at z=16.5, and OTR1/OTR2 are past the standard handoff.
         diags = list_handoff_points("impact_cu_inj")
-        assert diags == ("CATHODE", "YAG02", "YAG03")
+        assert diags == ("YAG02", "YAG03")
         for absent in ("YAG01", "OTR1", "OTR2", "OTR3", "OTR4"):
             assert absent not in diags
+
+    def test_cathode_is_only_listed_where_it_is_usable(self):
+        # bmad accepts start_ele="CATHODE"; the injectors have a fixed start, so
+        # listing it there would advertise something that cannot be passed.
+        assert "CATHODE" in list_handoff_points("bmad_cu_hxr")
+        for fixed in ("impact_cu_inj", "surrogate_cu_inj", "cheetah_cu_hxr"):
+            assert "CATHODE" not in list_handoff_points(fixed)
 
 
 class TestEntryIntegrity:
@@ -63,11 +70,6 @@ class TestEntryIntegrity:
     def test_broadcast_params_are_declared(self, name):
         entry = MODELS[name]
         assert entry.broadcast_params <= set(entry.params)
-
-    @pytest.mark.parametrize("name", sorted(MODELS))
-    def test_element_alias_keys_are_handoff_points(self, name):
-        entry = MODELS[name]
-        assert set(entry.element_aliases) <= set(entry.handoff_points)
 
     @pytest.mark.parametrize("name", sorted(MODELS))
     def test_defaults_are_consistent(self, name):
@@ -137,6 +139,13 @@ class TestKwargRouting:
         with pytest.raises(ValueError, match="not in this model"):
             _route_kwargs([MODELS["bmad_cu_hxr"]], {"nope.track_beam": True})
 
+    def test_dotted_form_accepts_end_ele_per_stage(self):
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        routed = _route_kwargs(
+            entries, {"impact_cu_inj.end_ele": "YAG02", "bmad_cu_hxr.end_ele": "TD11"}
+        )
+        assert routed == [{"end_element": "YAG02"}, {"end_element": "TD11"}]
+
     def test_dotted_form_rejects_unknown_param(self):
         with pytest.raises(ValueError, match="not a parameter of"):
             _route_kwargs([MODELS["bmad_cu_hxr"]], {"bmad_cu_hxr.bogus": 1})
@@ -161,10 +170,9 @@ class TestCommonHandoffPoints:
         assert common_handoff_points("surrogate_cu_inj", "bmad_cu_hxr") == ("OTR2",)
 
     def test_cathode_is_always_excluded(self):
-        # CATHODE is in both models' handoff_points but is never a valid handoff.
-        assert "CATHODE" in MODELS["impact_cu_inj"].handoff_points
+        # bmad lists CATHODE, so the intersection must drop it explicitly.
         assert "CATHODE" in MODELS["bmad_cu_hxr"].handoff_points
-        assert "CATHODE" not in common_handoff_points("impact_cu_inj", "bmad_cu_hxr")
+        assert "CATHODE" not in common_handoff_points("bmad_cu_hxr", "bmad_cu_hxr")
 
     def test_is_intersection_not_union(self):
         # OTR4 is only reachable by bmad_cu_hxr; a union would wrongly include it.

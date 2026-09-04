@@ -3,7 +3,7 @@
 Currently LCLS only; FACET-II entries are not registered yet.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -52,14 +52,6 @@ class ModelEntry:
     broadcast_params: frozenset[str] = frozenset()
     """Params safe to send to every stage of a staged model, e.g. n_particles."""
 
-    element_aliases: dict[str, str] = field(default_factory=dict)
-    """Standard name -> this engine's local name.
-
-    Diagnostics already agree between Bmad and IMPACT, so this only carries the
-    handful of elements that genuinely differ -- currently just the gun, which
-    Bmad calls CATHODE and IMPACT calls GUN.
-    """
-
     @property
     def configurable_extent(self) -> bool:
         return self.start_param is not None or self.end_param is not None
@@ -92,11 +84,10 @@ MODELS: dict[str, ModelEntry] = {
         params={"n_particles": 100, "end_element": "YAG03"},
         # YAG01 and OTR3 exist in the deck but their lines are commented out;
         # OTR4 is past stop_1 at z=16.5.
-        handoff_points=("CATHODE", "YAG02", "YAG03"),
+        handoff_points=("YAG02", "YAG03"),
         end_param="end_element",
         default_end="YAG03",
         broadcast_params=frozenset({"n_particles"}),
-        element_aliases={"CATHODE": "GUN"},
     ),
     "bmad_cu_hxr": ModelEntry(
         name="bmad_cu_hxr",
@@ -129,7 +120,7 @@ MODELS: dict[str, ModelEntry] = {
         ),
         extras=("surrogate",),
         params={"n_particles": 1000},
-        handoff_points=("CATHODE", "OTR2"),
+        handoff_points=("OTR2",),
         default_end="OTR2",
         broadcast_params=frozenset({"n_particles"}),
     ),
@@ -141,7 +132,7 @@ MODELS: dict[str, ModelEntry] = {
         builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_cheetah_model",
         extras=("cheetah",),
         params={"n_particles": 1000},
-        handoff_points=("CATHODE", "END"),
+        handoff_points=(),
         broadcast_params=frozenset({"n_particles"}),
     ),
 }
