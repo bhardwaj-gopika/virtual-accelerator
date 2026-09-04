@@ -1,7 +1,4 @@
-"""Registry of available virtual-accelerator models.
-
-Currently LCLS only; FACET-II entries are not registered yet.
-"""
+"""Registry of available virtual-accelerator models for LCLS and FACET-II."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -9,11 +6,53 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ModelEntry:
-    """Metadata describing one model and how to configure it.
+    """
+    Metadata describing one model and how to configure it.
 
-    ``builder`` is a ``"module:function"`` string rather than a callable so that
-    importing this module does not import pytao / torch / impact. Discovery must
-    work with no optional dependencies installed.
+    Parameters
+    ----------
+    name : str
+        Registry key, also used to qualify per-stage kwargs.
+    description : str
+        One-line summary shown by ``models_available``.
+    facility : str
+        "lcls" or "facet2". Models of different facilities cannot be staged.
+    engine : str
+        "bmad", "impact", "surrogate" or "cheetah".
+    builder : str
+        Builder function as a ``"module:function"`` string rather than a callable,
+        so that importing this module does not import pytao / torch / impact.
+        Discovery must work with no optional dependencies installed.
+    extras : tuple[str, ...]
+        Pip extras the builder needs, e.g. ``("bmad",)``.
+    params : dict[str, Any]
+        Configurable parameter name to default value. Also the allow-list against
+        which kwargs are validated.
+    handoff_points : tuple[str, ...]
+        Suggested start, end and handoff elements, in lattice order. A discovery
+        aid rather than a restriction: any element in the underlying lattice may
+        be used. Screens are enumerated exhaustively, so a screen-shaped name
+        absent from this tuple is treated as a typo and rejected; anything else
+        passes through to the engine. Positions refer to the entrance face of the
+        element, the only reference plane Bmad and IMPACT express identically.
+    start_param : str | None, optional
+        Builder kwarg controlling the start element. Default is None, meaning the
+        start is fixed and the model cannot be a downstream stage.
+    end_param : str | None, optional
+        Builder kwarg controlling the end element. Default is None, meaning the
+        end is not configurable.
+    default_start : str | None, optional
+        Standard start element. Default is None.
+    default_end : str | None, optional
+        Standard end element, used to infer the handoff when this model is
+        upstream in a chain. Default is None.
+    shared_params : frozenset[str], optional
+        Params that must hold the same value in every stage of a chain. The beam
+        flows through the stages, so a particle count differing between them is
+        physically meaningless. These are broadcast to every stage that declares
+        them, and the per-stage ``"<model>.<param>"`` form is rejected for them --
+        letting the values diverge would break the invariant rather than
+        configure anything. Default is empty.
     """
 
     name: str
@@ -22,44 +61,17 @@ class ModelEntry:
     engine: str
     builder: str
     extras: tuple[str, ...]
-
     params: dict[str, Any]
-    """Configurable parameter name -> default. Also the allow-list for kwargs."""
-
     handoff_points: tuple[str, ...]
-    """Suggested start/end/handoff elements, in lattice order.
-
-    A discovery aid, **not** a restriction: any element name in the underlying
-    lattice may be used. Screens are enumerated exhaustively, so a screen-shaped
-    name absent from this tuple is a typo and is rejected; anything else passes
-    through to the engine.
-
-    Positions refer to the **entrance** face of the element. Bmad's
-    ``-slice_lattice`` begins at an element's entrance and cannot begin at a
-    midpoint, and IMPACT's ``impact.ele[name]["s"]`` is also the entrance, so the
-    entrance is the only reference plane both engines express identically.
-    """
-
     start_param: str | None = None
-    """Builder kwarg controlling the start element, or None if not configurable."""
-
     end_param: str | None = None
-    """Builder kwarg controlling the end element, or None if not configurable."""
-
     default_start: str | None = None
     default_end: str | None = None
-
     shared_params: frozenset[str] = frozenset()
-    """Params that must hold the same value in every stage of a chain.
-
-    The beam flows through the stages, so a particle count differing between them
-    is physically meaningless. These are broadcast to every stage that declares
-    them, and the per-stage ``"<model>.<param>"`` form is rejected for them --
-    letting the values diverge would break the invariant, not configure anything.
-    """
 
     @property
     def configurable_extent(self) -> bool:
+        """Whether either end of the model's tracking range can be set."""
         return self.start_param is not None or self.end_param is not None
 
 

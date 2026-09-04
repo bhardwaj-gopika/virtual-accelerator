@@ -40,7 +40,21 @@ models_available = _ModelCatalog(
 
 
 def list_models(facility: str | None = None, engine: str | None = None) -> list[str]:
-    """Names of registered models, optionally filtered by facility or engine."""
+    """
+    Get the names of registered models, optionally filtered.
+
+    Parameters
+    ----------
+    facility : str, optional
+        Restrict to one facility, "lcls" or "facet2". Default is None, meaning all.
+    engine : str, optional
+        Restrict to one engine, e.g. "bmad". Default is None, meaning all.
+
+    Returns
+    -------
+    list[str]
+        Registry names, in registration order.
+    """
     return [
         name
         for name, entry in MODELS.items()
@@ -50,44 +64,62 @@ def list_models(facility: str | None = None, engine: str | None = None) -> list[
 
 
 def list_handoff_points(model_name: str) -> tuple[str, ...]:
-    """Suggested start/end/handoff elements, in lattice order.
+    """
+    Get the suggested start, end and handoff elements for one model.
 
-    A discovery aid, not an exhaustive list -- any lattice element may be used.
+    Parameters
+    ----------
+    model_name : str
+        Registry name.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Element names in lattice order. A discovery aid rather than an exhaustive
+        list -- any element in the underlying lattice may be used.
+
+    Raises
+    ------
+    KeyError
+        If ``model_name`` is not registered.
     """
     return _entry(model_name).handoff_points
 
 
 CATHODE = "CATHODE"
-"""Start-of-machine marker. Never a valid handoff: nothing is upstream of it."""
 
 
 def common_handoff_points(*model_names: str) -> tuple[str, ...]:
-    """Elements every named model can hand off at, in lattice order.
-
-    ``CATHODE`` is always excluded -- it marks the front of the machine, so
-    nothing can hand over to a stage that begins there.
-
-    This is the set intersection, not the union. A union would admit planes only
-    one stage can reach: ``impact_cu_inj`` stops by z=16.5 m and so cannot reach
-    ``OTR4`` at 17.80 m, but ``bmad_cu_hxr`` lists it, so the union would wrongly
-    accept ``handoff_loc="OTR4"`` for that pair.
+    """
+    Get the elements every named model can hand off at, in lattice order.
 
     Parameters
     ----------
-    *model_names
+    *model_names : str
         Two or more registry names.
 
     Returns
     -------
     tuple[str, ...]
         Shared handoff elements, ordered by the first model's lattice order.
+        Empty if the models share none.
 
-    Examples
-    --------
-    >>> common_handoff_points("impact_cu_inj", "bmad_cu_hxr")
-    ('YAG02', 'YAG03')
-    >>> common_handoff_points("surrogate_cu_inj", "bmad_cu_hxr")
-    ('OTR2',)
+    Raises
+    ------
+    ValueError
+        If fewer than two model names are given.
+    KeyError
+        If any name is not registered.
+
+    Notes
+    -----
+    ``CATHODE`` is always excluded: it marks the front of the machine, so nothing
+    can hand over to a stage beginning there.
+
+    This is the set intersection, not the union. A union would admit planes only
+    one stage can reach -- ``impact_cu_inj`` stops by z=16.5 m and so cannot reach
+    ``OTR4`` at 17.80 m, but ``bmad_cu_hxr`` lists it, so a union would wrongly
+    accept ``handoff_loc="OTR4"`` for that pair.
     """
     if len(model_names) < 2:
         raise ValueError("Need at least two models to find common handoff points.")
@@ -312,16 +344,42 @@ def _validate_pair(upstream: ModelEntry, downstream: ModelEntry, handoff: str) -
 
 
 def _strip_overlapping_variables(upstream, downstream, upstream_name, downstream_name):
-    """Remove variables the downstream stage shares with the upstream stage.
+    """
+    Remove variables the downstream stage shares with the upstream stage.
 
+    Parameters
+    ----------
+    upstream : LUMEModel
+        Stage that tracks the beam to the handoff plane and so owns its PVs.
+    downstream : LUMEModel
+        Stage the duplicates are removed from. Must support
+        ``unregister_action_variable``.
+    upstream_name : str
+        Registry name of ``upstream``, used in error messages.
+    downstream_name : str
+        Registry name of ``downstream``, used in error messages.
+
+    Returns
+    -------
+    list[str]
+        Variable names removed from ``downstream``, empty if there was no overlap.
+
+    Raises
+    ------
+    ValueError
+        If any shared variable is writable.
+    TypeError
+        If ``downstream`` cannot unregister variables.
+
+    Notes
+    -----
     Both stages include the handoff element, so both publish its PVs and
-    ``StagedModel`` would reject the pair as duplicates. The upstream stage owns
-    them -- it is the stage that actually tracks the beam to that plane -- so they
-    are unregistered from the downstream stage.
+    ``StagedModel`` would reject the pair as duplicates.
 
-    A *writable* overlap means something different and worse: both stages would be
-    driving the same magnet, and dropping it downstream would silently leave that
-    stage tracking with a stale value. That is a slicing error, so it raises.
+    A writable overlap means something different and worse: both stages would be
+    driving the same magnet, so their extents overlap rather than meeting at a
+    plane, and dropping it downstream would leave that stage tracking a stale
+    value.
     """
     from lume.actions import WritableActionMixin
 
@@ -369,55 +427,62 @@ def get_model(
     end_ele: str | None = None,
     **kwargs: Any,
 ):
-    """Build a model, or a staged chain of models, by registry name.
+    """
+    Build a model, or a staged chain of models, by registry name.
 
     Parameters
     ----------
-    spec
-        A registry name, or an ordered list of names to stage together.
-    handoff_loc
-        Element where each consecutive pair hands the beam over. Inferred from the
-        upstream stage's standard end when omitted. Must be a shared handoff point
-        of both stages -- see :func:`common_handoff_points`. A list is required for
-        more than two stages.
-    start_ele, end_ele
-        Overall extent. For a staged model these apply to the first and last
-        stage respectively; interior extents come from ``handoff_loc``.
+    spec : str or list[str]
+        A registry name, or an ordered list of names to stage together, upstream
+        first.
+    handoff_loc : str or list[str], optional
+        Element where each consecutive pair hands the beam over. Must be a shared
+        handoff point of both stages, see ``common_handoff_points``. A list is
+        required for more than two stages. Default is None, meaning it is inferred
+        from the upstream stage's standard end.
+    start_ele : str, optional
+        Element to start tracking from. For a staged model this applies to the
+        first stage. Default is None, meaning the model's own default.
+    end_ele : str, optional
+        Element to stop tracking at. For a staged model this applies to the last
+        stage; interior extents come from ``handoff_loc``. Default is None,
+        meaning the model's own default.
     **kwargs
-        Builder parameters. For staged models, qualify an ambiguous parameter as
-        ``"<model_name>.<param>"``.
+        Builder parameters. Params listed in a model's ``shared_params`` are sent
+        to every stage declaring them and cannot be set per stage. Others are
+        routed to the single stage declaring them, or qualified as
+        ``"<model_name>.<param>"`` when more than one does.
 
     Returns
     -------
     LUMEModel
         A single model, or a ``StagedModel`` wrapping the chain.
 
+    Raises
+    ------
+    KeyError
+        If a name in ``spec`` is not registered.
+    ValueError
+        If the stages cannot be chained, the handoff is not shared by both, or a
+        kwarg cannot be routed unambiguously.
+
     Notes
     -----
     For staged chains this handles two things that are easy to get wrong by hand.
 
-    **Duplicate variables at the handoff are removed automatically.** Both stages
+    Duplicate variables at the handoff are removed automatically. Both stages
     include the handoff element, so both publish its PVs -- an IMPACT model stopped
-    at ``YAG03`` keeps the screen (it prunes to ``s <= stop``) and so does a Bmad
-    model sliced from ``YAG03``. ``StagedModel`` would reject the pair as
-    duplicates. The upstream stage owns them, because it is the stage that tracks
-    the beam to that plane, so they are unregistered from the downstream stage
-    before the chain is assembled. A *writable* overlap raises instead: that means
-    both stages drive the same magnet, so their extents overlap rather than meeting
-    at a plane, and dropping it downstream would leave that stage tracking a stale
-    value.
+    at YAG03 keeps the screen, since it prunes to ``s <= stop``, and so does a Bmad
+    model sliced from YAG03. ``StagedModel`` would reject the pair as duplicates.
+    The upstream stage owns them, because it is the stage that tracks the beam to
+    that plane, so they are unregistered from the downstream stage before the chain
+    is assembled.
 
-    **Beam tracking is forced on for every stage that supports it**, since a
-    non-final stage must produce ``final_particles`` and a non-first stage must
-    accept ``initial_particles``.
+    Beam tracking is forced on for every stage that supports it, since a non-final
+    stage must produce ``final_particles`` and a non-first stage must accept
+    ``initial_particles``.
 
-    Examples
-    --------
-    >>> get_model("bmad_cu_hxr", end_ele="TD11")               # doctest: +SKIP
-    >>> get_model(["surrogate_cu_inj", "bmad_cu_hxr"],         # doctest: +SKIP
-    ...           end_ele="OTR4", n_particles=500)
-    >>> get_model(["impact_cu_inj", "bmad_cu_hxr"],            # doctest: +SKIP
-    ...           handoff_loc="YAG03", end_ele="TD11")
+    See ``docs/model_registry_usage.md`` for worked examples.
     """
     start_ele, end_ele = _normalize(start_ele), _normalize(end_ele)
 
