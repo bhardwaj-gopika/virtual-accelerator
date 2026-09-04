@@ -49,8 +49,14 @@ class ModelEntry:
     default_start: str | None = None
     default_end: str | None = None
 
-    broadcast_params: frozenset[str] = frozenset()
-    """Params safe to send to every stage of a staged model, e.g. n_particles."""
+    shared_params: frozenset[str] = frozenset()
+    """Params that must hold the same value in every stage of a chain.
+
+    The beam flows through the stages, so a particle count differing between them
+    is physically meaningless. These are broadcast to every stage that declares
+    them, and the per-stage ``"<model>.<param>"`` form is rejected for them --
+    letting the values diverge would break the invariant, not configure anything.
+    """
 
     @property
     def configurable_extent(self) -> bool:
@@ -87,7 +93,7 @@ MODELS: dict[str, ModelEntry] = {
         handoff_points=("YAG02", "YAG03"),
         end_param="end_element",
         default_end="YAG03",
-        broadcast_params=frozenset({"n_particles"}),
+        shared_params=frozenset({"n_particles"}),
     ),
     "bmad_cu_hxr": ModelEntry(
         name="bmad_cu_hxr",
@@ -122,7 +128,7 @@ MODELS: dict[str, ModelEntry] = {
         params={"n_particles": 1000},
         handoff_points=("OTR2",),
         default_end="OTR2",
-        broadcast_params=frozenset({"n_particles"}),
+        shared_params=frozenset({"n_particles"}),
     ),
     "cheetah_cu_hxr": ModelEntry(
         name="cheetah_cu_hxr",
@@ -133,6 +139,6 @@ MODELS: dict[str, ModelEntry] = {
         extras=("cheetah",),
         params={"n_particles": 1000},
         handoff_points=(),
-        broadcast_params=frozenset({"n_particles"}),
+        shared_params=frozenset({"n_particles"}),
     ),
 }

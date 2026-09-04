@@ -19,8 +19,11 @@ definitely wrong and is rejected early rather than failing deep inside Tao. Anyt
 through to the engine. There are 3323 elements in `cu_hxr`, so exhaustive validation is not on the
 table.
 
-`CATHODE` is the first entry that makes `element_aliases` non-empty: Bmad calls it `CATHODE`, IMPACT
-calls it `GUN`.
+`CATHODE` is listed only for `bmad_cu_hxr`, the one model whose start is configurable. The
+injectors always begin at the cathode and cannot be told otherwise, so an alias mapping Bmad's
+`CATHODE` to IMPACT's `GUN` was added and then removed again -- it was unreachable, since IMPACT
+has no start parameter to pass it to. `element_aliases` is gone with it; diagnostics already agree
+between the engines, so there was nothing left for it to carry.
 
 ### A2. Reference plane is the element ENTRANCE
 
@@ -84,9 +87,11 @@ Kwarg routing across stages is a table lookup, not signature introspection, so e
 name the candidate stages. Trade-off: adding a parameter to a builder means also adding it to the
 registry. That cost buys real error messages and a truthful `models_available`.
 
-Routing rules: broadcast params (`n_particles`) go to every stage declaring them; a param declared
-by exactly one stage routes there; declared by more than one and not broadcast is an error naming
-the candidates; `"<model_name>.<param>"` always wins.
+Routing rules: *shared* params (`n_particles`) go to every stage declaring them and cannot be set
+per stage, since the beam flows through and differing values would break a physical invariant; a
+param declared by exactly one stage routes there; declared by more than one is an error naming the
+candidates; `"<model_name>.<param>"` targets one stage. The builders' own `end_element` /
+`start_element` are rejected flat in favour of `end_ele` / `start_ele`.
 
 ### A6. Element names normalised to upper case at the API boundary
 

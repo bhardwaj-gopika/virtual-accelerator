@@ -67,9 +67,9 @@ class TestEntryIntegrity:
                 assert param in entry.params
 
     @pytest.mark.parametrize("name", sorted(MODELS))
-    def test_broadcast_params_are_declared(self, name):
+    def test_shared_params_are_declared(self, name):
         entry = MODELS[name]
-        assert entry.broadcast_params <= set(entry.params)
+        assert entry.shared_params <= set(entry.params)
 
     @pytest.mark.parametrize("name", sorted(MODELS))
     def test_defaults_are_consistent(self, name):
@@ -120,7 +120,7 @@ class TestKwargRouting:
         with pytest.raises(ValueError, match="not a parameter of any stage"):
             _route_kwargs([MODELS["bmad_cu_hxr"]], {"n_particle": 5})
 
-    def test_broadcast_reaches_every_declaring_stage(self):
+    def test_shared_param_reaches_every_declaring_stage(self):
         entries = [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]]
         routed = _route_kwargs(entries, {"n_particles": 42})
         assert routed == [{"n_particles": 42}, {"n_particles": 42}]
@@ -131,13 +131,28 @@ class TestKwargRouting:
         assert routed == [{}, {"track_beam": True}]
 
     def test_dotted_form_targets_one_stage(self):
-        entries = [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]]
-        routed = _route_kwargs(entries, {"cheetah_cu_hxr.n_particles": 7})
-        assert routed == [{}, {"n_particles": 7}]
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
+        routed = _route_kwargs(entries, {"bmad_cu_hxr.track_beam": True})
+        assert routed == [{}, {"track_beam": True}]
 
     def test_dotted_form_rejects_unknown_stage(self):
         with pytest.raises(ValueError, match="not in this model"):
             _route_kwargs([MODELS["bmad_cu_hxr"]], {"nope.track_beam": True})
+
+    def test_shared_param_cannot_be_set_per_stage(self):
+        # n_particles must match across stages -- the beam flows through them.
+        with pytest.raises(ValueError, match="same in every stage"):
+            _route_kwargs(
+                [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]],
+                {"cheetah_cu_hxr.n_particles": 7},
+            )
+
+    @pytest.mark.parametrize("key", ["end_element", "start_element"])
+    def test_flat_builder_spelling_is_rejected(self, key):
+        with pytest.raises(ValueError, match="does not say which stage"):
+            _route_kwargs(
+                [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]], {key: "TD11"}
+            )
 
     def test_dotted_form_accepts_end_ele_per_stage(self):
         entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
@@ -270,7 +285,7 @@ class TestElementNameCase:
 
     Tao is case-insensitive so lower case would appear to work, but IMPACT's
     impact.ele[...] is a dict lookup and the registry's own handoff_points and
-    element_aliases lookups would silently miss.
+    handoff_points lookups would silently miss.
     """
 
     @pytest.mark.parametrize("given", ["OTR4", "otr4", "Otr4", "oTr4"])

@@ -164,6 +164,15 @@ def _route_kwargs(
     routed: list[dict[str, Any]] = [{} for _ in entries]
     by_name = {entry.name: i for i, entry in enumerate(entries)}
 
+    # Builder spellings of the extent params. Flat use is rejected: which stage a
+    # bare "end_element" means is ambiguous, and start_ele/end_ele already say it.
+    extent_params = {
+        param
+        for entry in entries
+        for param in (entry.start_param, entry.end_param)
+        if param is not None
+    }
+
     for key, value in kwargs.items():
         stage_name, sep, param = key.partition(".")
         if sep:
@@ -178,6 +187,11 @@ def _route_kwargs(
                 "start_ele": entries[index].start_param,
                 "end_ele": entries[index].end_param,
             }.get(param, param)
+            if param in entries[index].shared_params:
+                raise ValueError(
+                    f"{param!r} must be the same in every stage, so it cannot be set "
+                    f"per stage. Pass {param}=... instead of {key!r}."
+                )
             if param not in entries[index].params:
                 raise ValueError(
                     f"{param!r} is not a parameter of {stage_name!r}. "
@@ -186,6 +200,16 @@ def _route_kwargs(
             routed[index][param] = value
             continue
 
+        if key in extent_params:
+            role = (
+                "start_ele" if any(e.start_param == key for e in entries) else "end_ele"
+            )
+            raise ValueError(
+                f"Do not pass {key!r} directly -- it is the builder's own name and does "
+                f"not say which stage it applies to. Use {role}=... for the overall "
+                f'extent, or "<model_name>.{key}=..." to target one stage.'
+            )
+
         accepting = [i for i, entry in enumerate(entries) if key in entry.params]
         if not accepting:
             known = sorted({p for entry in entries for p in entry.params})
@@ -193,8 +217,8 @@ def _route_kwargs(
                 f"{key!r} is not a parameter of any stage. Accepted: {', '.join(known)}"
             )
 
-        broadcast = any(key in entries[i].broadcast_params for i in accepting)
-        if len(accepting) > 1 and not broadcast:
+        shared = any(key in entries[i].shared_params for i in accepting)
+        if len(accepting) > 1 and not shared:
             names = ", ".join(entries[i].name for i in accepting)
             raise ValueError(
                 f"{key!r} is ambiguous across stages ({names}). "

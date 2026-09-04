@@ -42,8 +42,9 @@ handoff points:
 | gun / cathode | `CATHODE` / `CATHODEF` | `GUN` / `GUNF` |
 | L0A cavity | `L0A` (one lcavity) | `L0A_entrance`, `L0A_body_1`, `L0A_body_2`, `L0A_exit` |
 
-So the alias dict carries only the gun (`CATHODE` → IMPACT `GUN`). Cavity segmentation is one-to-many
-and cavities are not sensible handoff planes, so they are simply not registered as handoff points.
+No alias dict is needed. The gun would have been the one entry (`CATHODE` → IMPACT `GUN`) but it is
+unreachable: IMPACT has no start parameter to pass it to. Cavity segmentation is one-to-many and
+cavities are not sensible handoff planes, so they are simply not registered as handoff points.
 
 Two facts that don't need machinery but should be written down:
 
@@ -70,16 +71,13 @@ class ModelEntry:
     builder: str                     # "virtual_accelerator.models.cu_hxr:get_cu_hxr_bmad_model"
     extras: tuple[str, ...]          # pip extras needed, e.g. ("bmad",)
     params: dict[str, Any]           # param name -> default, for validation + discovery
-    broadcast_params: frozenset[str] # params safe to send to every stage, e.g. {"n_particles"}
+    shared_params: frozenset[str]    # must match across stages, e.g. {"n_particles"}
 
     handoff_points: tuple[str, ...]  # suggested elements, ORDERED by lattice position
     start_param: str | None          # builder kwarg for start, None if fixed
     end_param: str | None            # builder kwarg for end, None if fixed
     default_start: str | None
     default_end: str | None
-
-    element_aliases: dict[str, str] = field(default_factory=dict)
-    # standard name -> this engine's local name. Empty today; escape hatch only.
 ```
 
 `start_param` / `end_param` replace the earlier `can_start_anywhere` flag: they carry the same
@@ -115,9 +113,9 @@ virtual_accelerator/registry/
 
 | registry name | facility | engine | builder | key params | suggested handoff points |
 |---|---|---|---|---|---|
-| `impact_cu_inj` | lcls | impact | `get_cu_inj_impact_model` | `n_particles=100`, `end_element="OTR2"` | CATHODE, YAG02, YAG03, OTR1, OTR2 |
+| `impact_cu_inj` | lcls | impact | `get_cu_inj_impact_model` | `n_particles=100`, `end_element="YAG03"` | YAG02, YAG03 |
 | `bmad_cu_hxr` | lcls | bmad | `get_cu_hxr_bmad_model` | `start_element="OTR2"`, `end_element="END"`, `track_beam=False`, `custom_beam_path=None` | CATHODE, all 12 profmon screens, END |
-| `surrogate_cu_inj` | lcls | surrogate | `get_cu_hxr_injector_surrogate_model` | `n_particles=1000` | CATHODE, OTR2 (fixed extent) |
+| `surrogate_cu_inj` | lcls | surrogate | `get_cu_hxr_injector_surrogate_model` | `n_particles=1000` | OTR2 (fixed extent) |
 | `cheetah_cu_hxr` | lcls | cheetah | `get_cu_hxr_cheetah_model` | `n_particles=1000` | — |
 
 Naming convention: `<engine>_<lattice>`.
@@ -214,9 +212,13 @@ order shown.
 Because the registry declares each model's params, routing is a lookup, not signature
 introspection:
 
-1. Param in `broadcast_params` (e.g. `n_particles`) → sent to every stage that declares it.
+1. Param in `shared_params` (e.g. `n_particles`) → sent to every stage that declares it, and
+   the per-stage form is **rejected**: the beam flows through the stages, so differing values
+   would break a physical invariant rather than configure anything.
 2. Declared by exactly one stage → routed there.
-3. Declared by more than one stage and not broadcast → `ValueError` naming the candidates.
+3. Declared by more than one stage and not shared → `ValueError` naming the candidates. The
+   builder spellings `end_element`/`start_element` are rejected flat, since they do not say
+   which stage they mean; use `end_ele`/`start_ele`, or qualify per stage.
 4. `"<model_name>.<param>"` always wins.
 5. Matching no declared param → rejected with a suggestion, not silently forwarded.
 

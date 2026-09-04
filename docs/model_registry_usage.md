@@ -36,11 +36,16 @@ Each model exposes a set of suggested handoff points — named locations where b
 >>> for m in ["impact_cu_inj", "bmad_cu_hxr", "surrogate_cu_inj", "cheetah_cu_hxr"]:
 ...     print(m, list_handoff_points(m))
 
-impact_cu_inj     ('CATHODE', 'YAG02', 'YAG03')
+impact_cu_inj     ('YAG02', 'YAG03')
 bmad_cu_hxr       ('CATHODE', 'YAG02', 'YAG03', 'OTRH1', 'OTRH2', 'OTR1', 'OTR2', 'OTR3', 'OTR4', 'OTR11', 'OTR12', 'OTR21', 'OTRDMP', 'END')
-surrogate_cu_inj  ('CATHODE', 'OTR2')
-cheetah_cu_hxr    ('CATHODE', 'END')
+surrogate_cu_inj  ('OTR2',)
+cheetah_cu_hxr    ()
 ```
+
+`CATHODE` appears only for `bmad_cu_hxr`, the one model whose start is configurable — you
+can slice it from the front of the machine with `start_ele="CATHODE"`. The injector models
+always begin at the cathode and cannot be told otherwise, so listing it there would
+advertise something you cannot pass.
 
 ### Shared Handoff Points
 `common_handoff_points()` returns the locations two models can actually hand over at
@@ -56,14 +61,6 @@ upstream of it.
 
 >>> common_handoff_points("cheetah_cu_hxr", "bmad_cu_hxr")
 ()
-```
-
-### Element Aliases
-Some handoff point names are aliases for internal model element names:
-
-```python
->>> print(MODELS["impact_cu_inj"].element_aliases["CATHODE"])
-GUN
 ```
 
 ### Loading a Single Model
@@ -91,7 +88,7 @@ end_ele must be one of the model's listed handoff points:
 ```python
 >>> get_model("impact_cu_inj", end_ele="otr99")
 ValueError: 'OTR99' is not an available end screen for 'impact_cu_inj'.
-Suggested points: CATHODE, YAG02, YAG03
+Suggested points: YAG02, YAG03
 ```
 
 ## Staged Models
@@ -184,36 +181,65 @@ same magnet — their extents overlap rather than meeting at a plane — and dro
 downstream would leave that stage tracking a stale value.
 
 ### Targeting One Stage With kwargs
-Plain kwargs apply to whichever stage declares them. `n_particles` is a *broadcast*
-parameter, so it reaches every stage that accepts one; `start_ele` and `end_ele` apply to
-the first and last stage respectively.
+Parameters fall into two kinds, and which one it is decides how you pass it.
 
-To target a specific stage, prefix the parameter with the model ID:
+**Shared parameters must hold the same value in every stage.** `n_particles` is the only
+one: the beam flows through the stages, so a particle count that differs between them is
+physically meaningless. Pass it flat and it reaches every stage that declares one.
+
+```python
+>>> m = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=1000)
+```
+
+Setting a shared parameter per stage is refused — divergence would break the invariant
+rather than configure anything:
+
+```python
+>>> get_model([...], **{"impact_cu_inj.n_particles": 200})
+ValueError: 'n_particles' must be the same in every stage, so it cannot be set per stage.
+Pass n_particles=... instead of 'impact_cu_inj.n_particles'.
+```
+
+**Everything else means something different to each stage**, so it is either unambiguous
+or you say which stage. `track_beam` and `custom_beam_path` are only declared by
+`bmad_cu_hxr`, so they route there on their own:
+
+```python
+>>> m = get_model(["surrogate_cu_inj", "bmad_cu_hxr"], custom_beam_path="beam.h5")
+```
+
+Start and end elements need naming, because both stages have them. Use `start_ele` /
+`end_ele` for the overall extent — first and last stage respectively:
+
+```python
+>>> m = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", end_ele="TD11")
+```
+
+Or prefix with the model ID to set one stage:
 
 ```python
 >>> m = get_model(
 ...     ["impact_cu_inj", "bmad_cu_hxr"],
 ...     handoff_loc="YAG03",
-...     **{"impact_cu_inj.n_particles": 200, "bmad_cu_hxr.end_ele": "TD11"},
+...     **{"bmad_cu_hxr.end_ele": "TD11"},
 ... )
 ```
 
-The dotted form always wins and is never ambiguous. Both the `get_model` spelling
-(`end_ele`, `start_ele`) and the underlying builder spelling (`end_element`,
-`start_element`) are accepted:
+The dotted form accepts either spelling — the registry's (`end_ele`, `start_ele`) or the
+underlying builder's (`end_element`, `start_element`):
 
 ```python
 >>> "bmad_cu_hxr.end_ele"      # same as
 >>> "bmad_cu_hxr.end_element"
 ```
 
-Ambiguity is an error rather than a guess. A non-broadcast parameter declared by more than
-one stage must be qualified:
+Passing a builder spelling *flat* is refused, since it does not say which stage it means:
 
 ```python
 >>> get_model(["impact_cu_inj", "bmad_cu_hxr"], end_element="TD11")
-ValueError: 'end_element' is ambiguous across stages (impact_cu_inj, bmad_cu_hxr).
-Qualify it, e.g. "impact_cu_inj.end_element=...".
+ValueError: Do not pass 'end_element' directly -- it is the builder's own name and does
+not say which stage it applies to. Use end_ele=... for the overall extent, or
+"<model_name>.end_element=..." to target one stage.
 ```
 
 Unknown parameters are rejected outright, listing what is accepted:
@@ -230,7 +256,7 @@ To see what a model accepts:
 >>> MODELS["bmad_cu_hxr"].params
 {'start_element': 'OTR2', 'end_element': 'END', 'track_beam': False, 'custom_beam_path': None}
 
->>> MODELS["impact_cu_inj"].broadcast_params
+>>> MODELS["impact_cu_inj"].shared_params
 frozenset({'n_particles'})
 ```
 
