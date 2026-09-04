@@ -1,6 +1,9 @@
 # Virtual Accelerator (VA) Registry — README
 ## Overview
-The virtual_accelerator.registry module provides a unified interface for loading, configuring, and chaining accelerator simulation models for the LCLS copper linac (CU). Models can be used standalone or chained together to simulate the full beamline from cathode to end.
+The virtual_accelerator.registry module provides a unified interface for loading, configuring, and chaining accelerator simulation models for the LCLS copper linac (CU) and FACET-II. Models can be used standalone or chained together to simulate the full beamline from cathode to end.
+
+Building a model needs the matching lattice checkout on the environment:
+`$LCLS_LATTICE` for the `*_cu_*` models, `$FACET2_LATTICE` for the `*_f2*` ones.
 
 ### Installation
 ```bash
@@ -12,6 +15,7 @@ pip install git+https://github.com/slaclab/virtual-accelerator.git
 from virtual_accelerator.registry import (
     get_model,
     models_available,
+    list_models,
     list_handoff_points,
     common_handoff_points,
 )
@@ -23,10 +27,23 @@ Print all registered models and their descriptions:
 
 ```python
 >>> print(models_available)
-impact_cu_inj     IMPACT-T LCLS injector, cathode -> YAG03
-bmad_cu_hxr       Bmad CU-HXR linac, injector handoff -> END
-surrogate_cu_inj  NN LCLS injector surrogate, cathode -> OTR2
-cheetah_cu_hxr    Cheetah nc_hxr, cathode -> END
+impact_cu_inj      IMPACT-T LCLS injector, cathode -> YAG03
+bmad_cu_hxr        Bmad CU-HXR linac, injector handoff -> END
+surrogate_cu_inj   NN LCLS injector surrogate, cathode -> OTR2
+cheetah_cu_hxr     Cheetah nc_hxr, cathode -> END
+impact_f2e_inj     IMPACT-T FACET-II injector, cathode -> PR10241
+surrogate_f2e_inj  NN FACET-II injector surrogate, cathode -> PR10241
+bmad_f2_elec       Bmad FACET-II e- linac, injector handoff -> END
+```
+
+Filter by facility or engine:
+
+```python
+>>> list_models(facility="facet2")
+['impact_f2e_inj', 'surrogate_f2e_inj', 'bmad_f2_elec']
+
+>>> list_models(engine="bmad")
+['bmad_cu_hxr', 'bmad_f2_elec']
 ```
 
 ### Handoff Points
@@ -36,16 +53,24 @@ Each model exposes a set of suggested handoff points — named locations where b
 >>> for m in ["impact_cu_inj", "bmad_cu_hxr", "surrogate_cu_inj", "cheetah_cu_hxr"]:
 ...     print(m, list_handoff_points(m))
 
-impact_cu_inj     ('YAG02', 'YAG03')
-bmad_cu_hxr       ('CATHODE', 'YAG02', 'YAG03', 'OTRH1', 'OTRH2', 'OTR1', 'OTR2', 'OTR3', 'OTR4', 'OTR11', 'OTR12', 'OTR21', 'OTRDMP', 'END')
-surrogate_cu_inj  ('OTR2',)
-cheetah_cu_hxr    ()
+impact_cu_inj      ('YAG02', 'YAG03')
+bmad_cu_hxr        ('CATHODE', 'YAG02', 'YAG03', 'OTRH1', 'OTRH2', 'OTR1', 'OTR2', 'OTR3', 'OTR4', 'OTR11', 'OTR12', 'OTR21', 'OTRDMP', 'END')
+surrogate_cu_inj   ('OTR2',)
+cheetah_cu_hxr     ()
+impact_f2e_inj     ('PR10241',)
+surrogate_f2e_inj  ('PR10241',)
+bmad_f2_elec       ('CATHODEF', 'PR10241', 'L0AFEND', 'PR10465', 'PR10471', 'PR10571', 'PR10711', 'END')
 ```
 
-`CATHODE` appears only for `bmad_cu_hxr`, the one model whose start is configurable — you
-can slice it from the front of the machine with `start_ele="CATHODE"`. The injector models
-always begin at the cathode and cannot be told otherwise, so listing it there would
-advertise something you cannot pass.
+The cathode appears only on the Bmad models, whose start is configurable — you can slice
+from the front of the machine with `start_ele="CATHODE"` (LCLS) or `start_ele="CATHODEF"`
+(FACET; the element carries an `F` suffix in that lattice). The injector models always
+begin at the cathode and cannot be told otherwise, so listing it there would advertise
+something you cannot pass.
+
+FACET's injectors list only `PR10241`, which is what restricts every FACET chain to that
+one handoff plane. `bmad_f2_elec` still lists the downstream screens so they remain usable
+as `end_ele`.
 
 ### Shared Handoff Points
 `common_handoff_points()` returns the locations two models can actually hand over at
@@ -61,6 +86,9 @@ upstream of it.
 
 >>> common_handoff_points("cheetah_cu_hxr", "bmad_cu_hxr")
 ()
+
+>>> common_handoff_points("impact_f2e_inj", "bmad_f2_elec")
+('PR10241',)
 ```
 
 ### Loading a Single Model
@@ -125,6 +153,32 @@ impact_cu_inj → bmad_cu_hxr — hand off at YAG03:
 
 >>> print(model.get("OTR4_beam")["norm_emit_y"])
 2.3638227838794528e-07
+```
+
+### FACET-II
+Both FACET chains hand off at PR10241, so `handoff_loc` can be left out:
+
+```python
+>>> m = get_model(["surrogate_f2e_inj", "bmad_f2_elec"], end_ele="PR10711", n_particles=2000)
+>>> m = get_model(["impact_f2e_inj", "bmad_f2_elec"], end_ele="PR10711", n_particles=200)
+```
+
+Standalone:
+
+```python
+>>> get_model("bmad_f2_elec", end_ele="PR10711", track_beam=True)
+<lume_bmad.model.LUMEBmadModel object at 0x...>
+```
+
+Anything other than PR10241 is refused, as is mixing facilities:
+
+```python
+>>> get_model(["impact_f2e_inj", "bmad_f2_elec"], handoff_loc="PR10571")
+ValueError: 'PR10571' is not a shared handoff point for 'impact_f2e_inj' -> 'bmad_f2_elec'.
+Available: PR10241
+
+>>> get_model(["impact_cu_inj", "bmad_f2_elec"], handoff_loc="YAG03")
+ValueError: Cannot stage 'impact_cu_inj' (lcls) onto 'bmad_f2_elec' (facet2): different facilities.
 ```
 
 ### Handoff Validation

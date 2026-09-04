@@ -28,9 +28,15 @@ class TestDiscovery:
         assert len(text.splitlines()) == len(MODELS)
 
     def test_filter_by_engine_and_facility(self):
-        assert list_models(engine="bmad") == ["bmad_cu_hxr"]
-        assert set(list_models(facility="lcls")) == set(MODELS)
-        assert list_models(facility="facet2") == []
+        assert list_models(engine="bmad") == ["bmad_cu_hxr", "bmad_f2_elec"]
+        assert list_models(facility="facet2") == [
+            "impact_f2e_inj",
+            "surrogate_f2e_inj",
+            "bmad_f2_elec",
+        ]
+        assert set(list_models(facility="lcls")) | set(
+            list_models(facility="facet2")
+        ) == set(MODELS)
 
     def test_handoff_points_are_lattice_ordered(self):
         diags = list_handoff_points("bmad_cu_hxr")
@@ -46,11 +52,18 @@ class TestDiscovery:
             assert absent not in diags
 
     def test_cathode_is_only_listed_where_it_is_usable(self):
-        # bmad accepts start_ele="CATHODE"; the injectors have a fixed start, so
-        # listing it there would advertise something that cannot be passed.
+        # The bmad models accept a cathode start; the injectors have a fixed start,
+        # so listing it there would advertise something that cannot be passed.
+        # FACET's element is CATHODEF, not CATHODE.
         assert "CATHODE" in list_handoff_points("bmad_cu_hxr")
+        assert "CATHODEF" in list_handoff_points("bmad_f2_elec")
         for fixed in ("impact_cu_inj", "surrogate_cu_inj", "cheetah_cu_hxr"):
-            assert "CATHODE" not in list_handoff_points(fixed)
+            assert not {"CATHODE", "CATHODEF"} & set(list_handoff_points(fixed))
+
+    def test_facet_handoff_is_restricted_to_pr10241(self):
+        for inj in ("impact_f2e_inj", "surrogate_f2e_inj"):
+            assert list_handoff_points(inj) == ("PR10241",)
+            assert common_handoff_points(inj, "bmad_f2_elec") == ("PR10241",)
 
 
 class TestEntryIntegrity:
@@ -88,6 +101,10 @@ class TestValidation:
     def test_rejects_unavailable_screen(self):
         with pytest.raises(ValueError, match="not an available end screen"):
             get_model("impact_cu_inj", end_ele="OTR4")
+
+    def test_rejects_cross_facility_staging(self):
+        with pytest.raises(ValueError, match="different facilities"):
+            get_model(["impact_cu_inj", "bmad_f2_elec"], handoff_loc="YAG03")
 
     def test_rejects_impact_as_downstream_stage(self):
         with pytest.raises(ValueError, match="only start at the cathode"):
@@ -203,6 +220,9 @@ class TestCommonHandoffPoints:
 
     def test_no_shared_points_gives_empty_tuple(self):
         assert common_handoff_points("cheetah_cu_hxr", "bmad_cu_hxr") == ()
+
+    def test_cross_facility_pairs_share_nothing(self):
+        assert common_handoff_points("impact_cu_inj", "bmad_f2_elec") == ()
 
     def test_requires_at_least_two_models(self):
         with pytest.raises(ValueError, match="at least two models"):
