@@ -6,6 +6,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# The elements CSV and the lattice aliases both disagree with the PVs FACET VAs
+# actually use, so these overrides are authoritative for both engines. The lattice
+# says YAGS:/OTRS:IN10:* for the screens and TCAV:IN10:490 for the TCAV.
+FACET_PV_OVERRIDES = {
+    "PR10241": "PROF:IN10:241",
+    "PR10465": "PROF:IN10:465",
+    "PR10471": "PROF:IN10:471",
+    "PR10571": "PROF:IN10:571",
+    "PR10711": "PROF:IN10:711",
+    "TCY10490": "KLYS:LI10:51",
+}
+
 IMPACT_GROUP_PV_MAPPING = {
     "group:L0AF_phase": {"pv": "KLYS:IN10:81:PDES", "element": "L0AF_entrance"},
     "group:L0BF_phase": {"pv": "KLYS:IN10:41:PDES", "element": "L0BF_entrance"},
@@ -94,13 +106,6 @@ def get_facet_bmad_model(
     """
     from virtual_accelerator.bmad.factory import BmadModelSpec, build_bmad_model
 
-    custom_aliases = {
-        "PR10241": "PROF:IN10:241",
-        "PR10571": "PROF:IN10:571",
-        "PR10711": "PROF:IN10:711",
-        "TCY10490": "KLYS:LI10:51",
-    }
-
     spec = BmadModelSpec(
         feature="FACET-II Bmad model",
         lattice_env_var="FACET2_LATTICE",
@@ -116,7 +121,7 @@ def get_facet_bmad_model(
         end_element=end_element,
         track_beam=track_beam,
         custom_beam_path=custom_beam_path,
-        custom_aliases=custom_aliases,
+        custom_aliases=FACET_PV_OVERRIDES,
         custom_tao_commands=[
             "set bmad_com absolute_time_tracking=true",
             "set bmad_com lr_wakes_on=false",
@@ -205,7 +210,9 @@ def get_facet_staged_model(n_particles=10000, surrogate_inputs="machine", **kwar
     return staged_model
 
 
-def get_facet_impact_model(n_particles: int = 100, end_element="PR10571"):
+def get_facet_impact_model(
+    n_particles: int = 100, end_element="PR10571", include_end_element: bool = True
+):
     from virtual_accelerator.impact.factory import (
         ImpactModelSpec,
         build_impact_model,
@@ -221,6 +228,8 @@ def get_facet_impact_model(n_particles: int = 100, end_element="PR10571"):
         numprocs=1,
         space_charge=False,
         stop_location=end_element,
+        include_stop_element=include_end_element,
+        custom_aliases=FACET_PV_OVERRIDES,
     )
     model = build_impact_model(spec)
 

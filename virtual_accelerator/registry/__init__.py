@@ -343,6 +343,39 @@ def _validate_pair(upstream: ModelEntry, downstream: ModelEntry, handoff: str) -
         )
 
 
+def _exclusive_end(entry: ModelEntry, handoff: str) -> str:
+    """
+    Get the end element for an upstream stage handing over at ``handoff``.
+
+    Parameters
+    ----------
+    entry : ModelEntry
+        The upstream stage.
+    handoff : str
+        Element where the beam is handed to the next stage.
+
+    Returns
+    -------
+    str
+        Element to pass as the upstream stage's end. For Bmad this is Tao's
+        ``"<handoff>-1"`` offset form; other engines end at ``handoff`` itself.
+
+    Notes
+    -----
+    Tracking stops at the handoff plane without passing through the element, so
+    the downstream stage owns it and the two stages meet rather than overlap.
+
+    Bmad's ``-slice_lattice`` accepts ``"OTR4-1"`` to mean the element before
+    OTR4, which also sidesteps naming the predecessor -- several of them are
+    duplicated in the lattice (both OTR1 and OTR3 follow an element called DE05)
+    and would otherwise need a ``##N`` index.
+
+    For IMPACT the exclusion happens in ``set_stop_location``, which prunes
+    elements at or beyond the stop plane, so the name needs no adjustment here.
+    """
+    return f"{handoff}-1" if entry.engine == "bmad" else handoff
+
+
 def _strip_overlapping_variables(upstream, downstream, upstream_name, downstream_name):
     """
     Remove variables the downstream stage shares with the upstream stage.
@@ -505,7 +538,9 @@ def get_model(
     stages = []
     for i, entry in enumerate(entries):
         stage_start = start_ele if i == 0 else handoffs[i - 1]
-        stage_end = end_ele if i == len(entries) - 1 else handoffs[i]
+        stage_end = (
+            end_ele if i == len(entries) - 1 else _exclusive_end(entry, handoffs[i])
+        )
 
         stage_kwargs = dict(routed[i])
         # Every stage needs tracking on: a non-final stage has to produce
@@ -513,6 +548,12 @@ def get_model(
         # (lume_bmad rejects those unless track_type is 'beam').
         if "track_beam" in entry.params:
             stage_kwargs["track_beam"] = True
+
+        # An upstream stage stops at the handoff plane without keeping the element,
+        # so the downstream stage owns it. Bmad does this via the "-1" offset in
+        # _exclusive_end; IMPACT needs the flag because its prune is inclusive.
+        if i < len(entries) - 1 and "include_end_element" in entry.params:
+            stage_kwargs["include_end_element"] = False
 
         stages.append(
             _build(

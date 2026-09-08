@@ -205,34 +205,52 @@ LCLS needs two handoff planes because its injector models end at different place
 neither can move. The NN surrogate predicts `OTRS:IN20:571` (OTR2) at 135 MeV and
 cannot produce a beam at YAG03, which sits before L0B at 64 MeV.
 
-### Overlapping Variables Are Handled For You
-Both stages include the handoff element, so both publish its PVs — an IMPACT model
-stopped at `YAG03` keeps the screen (it prunes to `s <= stop`) and so does a Bmad model
-sliced from `YAG03`. `StagedModel` would reject the pair as duplicates.
+### The Handoff Element Belongs To The Downstream Stage
+Tracking stops *at* the handoff plane without carrying on through the element, so the
+upstream stage ends just before it and the downstream stage owns it. `get_model()` arranges
+this; nothing is required of the caller.
 
-`get_model()` resolves this automatically: the upstream stage owns those PVs, because it
-is the stage that tracks the beam to that plane, so they are unregistered from the
-downstream stage before the chain is assembled. Nothing is required of the caller.
+The two engines express it differently:
 
-The removal is surgical — only genuine collisions go. At YAG03 the IMPACT stage publishes
-four PVs; the Bmad stage publishes those four plus `:X` and `:Y` centroid readbacks that
-IMPACT does not provide. So the four move to IMPACT and the two Bmad-only ones stay:
+| stage | how the exclusion is done |
+|---|---|
+| Bmad upstream | sliced to Tao's `"<handoff>-1"`, the element before the handoff |
+| IMPACT upstream | `include_end_element=False`, so the element on the stop plane is pruned |
+
+Neither changes where the beam stops. Every handoff point is zero-length, and IMPACT's stop
+plane is already the element's entrance, so ending "before" the element and ending "at" it
+are the same z. Only ownership of its PVs changes.
+
+The result is that the handoff element appears in exactly one stage:
 
 ```python
->>> m = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", end_ele="TD11")
+>>> m = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", end_ele="OTR4")
 >>> imp, bmad = m.lume_model_instances
 
->>> sorted(v for v in imp.supported_variables if "IN20:351" in v)
-['YAGS:IN20:351:Image:ArrayData', 'YAGS:IN20:351:Image:ArraySize0_RBV',
- 'YAGS:IN20:351:Image:ArraySize1_RBV', 'YAGS:IN20:351:RESOLUTION']
+>>> "YAG03" in imp.impact_model.simulator.ele
+False
+>>> len([v for v in imp.supported_variables if "IN20:351" in v])
+0
 
->>> sorted(v for v in bmad.supported_variables if "IN20:351" in v)
-['YAGS:IN20:351:X', 'YAGS:IN20:351:Y']
+>>> len([v for v in bmad.supported_variables if "IN20:351" in v])
+6
+>>> set(imp.supported_variables) & set(bmad.supported_variables)
+set()
 ```
 
-A *writable* overlap raises instead of being dropped. That means both stages drive the
-same magnet — their extents overlap rather than meeting at a plane — and dropping it
-downstream would leave that stage tracking a stale value.
+Note this applies only to the handoff. A `start_ele` or `end_ele` you ask for yourself stays
+inclusive, so `end_ele="OTR4"` still gives you `OTR4_beam` and the OTR4 image PVs.
+
+#### If the extents overlap anyway
+Because the stages meet at a plane rather than overlapping, there is normally nothing to
+deduplicate. As a safeguard, any variables that do turn out to be shared are unregistered
+from the downstream stage — `StagedModel` rejects duplicates outright, and this keeps the
+failure from surfacing only after a full IMPACT run.
+
+A *writable* overlap raises instead of being dropped. That means both stages drive the same
+magnet, so their extents genuinely overlap rather than meeting at a plane, and dropping it
+downstream would leave that stage tracking a stale value. Check the handoff element if you
+see it.
 
 ### Targeting One Stage With kwargs
 Parameters fall into two kinds, and which one it is decides how you pass it.

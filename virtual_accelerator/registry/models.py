@@ -99,7 +99,11 @@ MODELS: dict[str, ModelEntry] = {
         engine="impact",
         builder="virtual_accelerator.models.cu_hxr:get_cu_inj_impact_model",
         extras=("impact",),
-        params={"n_particles": 100, "end_element": "YAG03"},
+        params={
+            "n_particles": 100,
+            "end_element": "YAG03",
+            "include_end_element": True,
+        },
         # YAG01 and OTR3 exist in the deck but their lines are commented out;
         # OTR4 is past stop_1 at z=16.5.
         handoff_points=("YAG02", "YAG03"),
@@ -160,7 +164,11 @@ MODELS: dict[str, ModelEntry] = {
         engine="impact",
         builder="virtual_accelerator.models.facet2:get_facet_impact_model",
         extras=("impact",),
-        params={"n_particles": 100, "end_element": "PR10241"},
+        params={
+            "n_particles": 100,
+            "end_element": "PR10241",
+            "include_end_element": True,
+        },
         handoff_points=("PR10241",),
         end_param="end_element",
         default_end="PR10241",
