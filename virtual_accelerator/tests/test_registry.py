@@ -28,7 +28,7 @@ class TestDiscovery:
         assert len(text.splitlines()) == len(MODELS)
 
     def test_filter_by_engine_and_facility(self):
-        assert list_models(engine="bmad") == ["bmad_cu_hxr", "bmad_f2_elec"]
+        assert list_models(simulator="bmad") == ["bmad_cu_hxr", "bmad_f2_elec"]
         assert list_models(facility="facet2") == [
             "impact_f2e_inj",
             "surrogate_f2e_inj",
@@ -57,7 +57,7 @@ class TestDiscovery:
         # FACET's element is CATHODEF, not CATHODE.
         assert "CATHODE" in list_handoff_points("bmad_cu_hxr")
         assert "CATHODEF" in list_handoff_points("bmad_f2_elec")
-        for fixed in ("impact_cu_inj", "surrogate_cu_inj", "cheetah_cu_hxr"):
+        for fixed in ("impact_cu_inj", "surrogate_cu_inj"):
             assert not {"CATHODE", "CATHODEF"} & set(list_handoff_points(fixed))
 
     def test_facet_handoff_is_restricted_to_pr10241(self):
@@ -219,7 +219,7 @@ class TestCommonHandoffPoints:
         )
 
     def test_no_shared_points_gives_empty_tuple(self):
-        assert common_handoff_points("cheetah_cu_hxr", "bmad_cu_hxr") == ()
+        assert common_handoff_points("impact_cu_inj", "surrogate_cu_inj") == ()
 
     def test_cross_facility_pairs_share_nothing(self):
         assert common_handoff_points("impact_cu_inj", "bmad_f2_elec") == ()
@@ -322,11 +322,13 @@ class TestElementNameCase:
             get_model("impact_cu_inj", end_ele="otr99")
 
     def test_lowercase_valid_screen_is_accepted(self):
-        # Reaches the builder (and fails only because the extra is absent here),
-        # proving validation no longer rejects it.
-        with pytest.raises((ImportError, ValueError)) as excinfo:
+        # Validation must not reject a lowercase-but-valid screen. The builder may
+        # succeed or fail depending on environment (extras, lattice env vars); the
+        # only thing this test guards against is the "not an available" ValueError.
+        try:
             get_model("impact_cu_inj", end_ele="yag03")
-        assert "not an available" not in str(excinfo.value)
+        except Exception as exc:
+            assert "not an available" not in str(exc)
 
     def test_lowercase_handoff_normalises_before_resolution(self):
         entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
