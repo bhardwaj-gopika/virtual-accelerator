@@ -17,7 +17,7 @@ class ModelEntry:
         One-line summary shown by ``models_available``.
     facility : str
         "lcls" or "facet2". Models of different facilities cannot be staged.
-    engine : str
+    simulator : str
         "bmad", "impact", "surrogate" or "cheetah".
     builder : str
         Builder function as a ``"module:function"`` string rather than a callable,
@@ -33,7 +33,7 @@ class ModelEntry:
         aid rather than a restriction: any element in the underlying lattice may
         be used. Screens are enumerated exhaustively, so a screen-shaped name
         absent from this tuple is treated as a typo and rejected; anything else
-        passes through to the engine. Positions refer to the entrance face of the
+        passes through to the simulator. Positions refer to the entrance face of the
         element, the only reference plane Bmad and IMPACT express identically.
     start_param : str | None, optional
         Builder kwarg controlling the start element. Default is None, meaning the
@@ -58,7 +58,7 @@ class ModelEntry:
     name: str
     description: str
     facility: str
-    engine: str
+    simulator: str
     builder: str
     extras: tuple[str, ...]
     params: dict[str, Any]
@@ -96,7 +96,7 @@ MODELS: dict[str, ModelEntry] = {
         name="impact_cu_inj",
         description="IMPACT-T LCLS injector, cathode -> YAG03",
         facility="lcls",
-        engine="impact",
+        simulator="impact",
         builder="virtual_accelerator.models.cu_hxr:get_cu_inj_impact_model",
         extras=("impact",),
         params={
@@ -115,7 +115,7 @@ MODELS: dict[str, ModelEntry] = {
         name="bmad_cu_hxr",
         description="Bmad CU-HXR linac, injector handoff -> END",
         facility="lcls",
-        engine="bmad",
+        simulator="bmad",
         builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_bmad_model",
         extras=("bmad",),
         params={
@@ -136,7 +136,7 @@ MODELS: dict[str, ModelEntry] = {
         name="surrogate_cu_inj",
         description="NN LCLS injector surrogate, cathode -> OTR2",
         facility="lcls",
-        engine="surrogate",
+        simulator="surrogate",
         builder=(
             "virtual_accelerator.models.cu_hxr:get_cu_hxr_injector_surrogate_model"
         ),
@@ -150,18 +150,18 @@ MODELS: dict[str, ModelEntry] = {
         name="cheetah_cu_hxr",
         description="Cheetah nc_hxr, cathode -> END",
         facility="lcls",
-        engine="cheetah",
+        simulator="cheetah",
         builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_cheetah_model",
         extras=("cheetah",),
         params={"n_particles": 1000},
-        handoff_points=(),
+        handoff_points=("CATHODE", "END"),
         shared_params=frozenset({"n_particles"}),
     ),
     "impact_f2e_inj": ModelEntry(
         name="impact_f2e_inj",
         description="IMPACT-T FACET-II injector, cathode -> PR10241",
         facility="facet2",
-        engine="impact",
+        simulator="impact",
         builder="virtual_accelerator.models.facet2:get_facet_impact_model",
         extras=("impact",),
         params={
@@ -178,7 +178,7 @@ MODELS: dict[str, ModelEntry] = {
         name="surrogate_f2e_inj",
         description="NN FACET-II injector surrogate, cathode -> PR10241",
         facility="facet2",
-        engine="surrogate",
+        simulator="surrogate",
         builder="virtual_accelerator.models.facet2:get_facet_injector_surrogate_model",
         extras=("surrogate",),
         params={"n_particles": 10000, "surrogate_inputs": "machine"},
@@ -190,7 +190,7 @@ MODELS: dict[str, ModelEntry] = {
         name="bmad_f2_elec",
         description="Bmad FACET-II e- linac, injector handoff -> END",
         facility="facet2",
-        engine="bmad",
+        simulator="bmad",
         builder="virtual_accelerator.models.facet2:get_facet_bmad_model",
         extras=("bmad",),
         params={

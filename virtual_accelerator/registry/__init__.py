@@ -39,7 +39,7 @@ models_available = _ModelCatalog(
 )
 
 
-def list_models(facility: str | None = None, engine: str | None = None) -> list[str]:
+def list_models(facility: str | None = None, simulator: str | None = None) -> list[str]:
     """
     Get the names of registered models, optionally filtered.
 
@@ -47,8 +47,8 @@ def list_models(facility: str | None = None, engine: str | None = None) -> list[
     ----------
     facility : str, optional
         Restrict to one facility, "lcls" or "facet2". Default is None, meaning all.
-    engine : str, optional
-        Restrict to one engine, e.g. "bmad". Default is None, meaning all.
+    simulator : str, optional
+        Restrict to one simulator, e.g. "bmad". Default is None, meaning all.
 
     Returns
     -------
@@ -59,7 +59,7 @@ def list_models(facility: str | None = None, engine: str | None = None) -> list[
         name
         for name, entry in MODELS.items()
         if (facility is None or entry.facility == facility)
-        and (engine is None or entry.engine == engine)
+        and (simulator is None or entry.simulator == simulator)
     ]
 
 
@@ -325,7 +325,7 @@ def _validate_pair(upstream: ModelEntry, downstream: ModelEntry, handoff: str) -
     if downstream.start_param is None:
         reason = (
             "IMPACT models can only start at the cathode"
-            if downstream.engine == "impact"
+            if downstream.simulator == "impact"
             else f"{downstream.name!r} has a fixed start"
         )
         raise ValueError(f"{downstream.name!r} cannot be a downstream stage: {reason}.")
@@ -358,7 +358,7 @@ def _exclusive_end(entry: ModelEntry, handoff: str) -> str:
     -------
     str
         Element to pass as the upstream stage's end. For Bmad this is Tao's
-        ``"<handoff>-1"`` offset form; other engines end at ``handoff`` itself.
+        ``"<handoff>-1"`` offset form; other simulators end at ``handoff`` itself.
 
     Notes
     -----
@@ -373,7 +373,7 @@ def _exclusive_end(entry: ModelEntry, handoff: str) -> str:
     For IMPACT the exclusion happens in ``set_stop_location``, which prunes
     elements at or beyond the stop plane, so the name needs no adjustment here.
     """
-    return f"{handoff}-1" if entry.engine == "bmad" else handoff
+    return f"{handoff}-1" if entry.simulator == "bmad" else handoff
 
 
 def _strip_overlapping_variables(upstream, downstream, upstream_name, downstream_name):

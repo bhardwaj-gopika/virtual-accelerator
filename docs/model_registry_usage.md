@@ -36,13 +36,13 @@ surrogate_f2e_inj  NN FACET-II injector surrogate, cathode -> PR10241
 bmad_f2_elec       Bmad FACET-II e- linac, injector handoff -> END
 ```
 
-Filter by facility or engine:
+Filter by facility or simulator:
 
 ```python
 >>> list_models(facility="facet2")
 ['impact_f2e_inj', 'surrogate_f2e_inj', 'bmad_f2_elec']
 
->>> list_models(engine="bmad")
+>>> list_models(simulator="bmad")
 ['bmad_cu_hxr', 'bmad_f2_elec']
 ```
 
@@ -56,7 +56,7 @@ Each model exposes a set of suggested handoff points — named locations where b
 impact_cu_inj      ('YAG02', 'YAG03')
 bmad_cu_hxr        ('CATHODE', 'YAG02', 'YAG03', 'OTRH1', 'OTRH2', 'OTR1', 'OTR2', 'OTR3', 'OTR4', 'OTR11', 'OTR12', 'OTR21', 'OTRDMP', 'END')
 surrogate_cu_inj   ('OTR2',)
-cheetah_cu_hxr     ()
+cheetah_cu_hxr     ('CATHODE', 'END')
 impact_f2e_inj     ('PR10241',)
 surrogate_f2e_inj  ('PR10241',)
 bmad_f2_elec       ('CATHODEF', 'PR10241', 'L0AFEND', 'PR10465', 'PR10471', 'PR10571', 'PR10711', 'END')
@@ -210,7 +210,7 @@ Tracking stops *at* the handoff plane without carrying on through the element, s
 upstream stage ends just before it and the downstream stage owns it. `get_model()` arranges
 this; nothing is required of the caller.
 
-The two engines express it differently:
+The two simulators express it differently:
 
 | stage | how the exclusion is done |
 |---|---|
