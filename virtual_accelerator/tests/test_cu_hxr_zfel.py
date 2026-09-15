@@ -22,14 +22,14 @@ def test_cu_hxr_zfel_model_variables():
         assert f"DSKAct_{cell}" in supported
 
         expected_pvs = {
-        "ZFEL:POWER_MAX",
-        "ZFEL:EXIT_POWER",
-        "ZFEL:PULSE_ENERGY",
-        "GDET:FEE1:361:ENRC",
-        "GDET:FEE1:361:ENRCHSTCUHBR",
-        "ZFEL:PULSE_INTENSITY_STD_REL",
-        "ZFEL:MODEL_EVAL_ID",
-    }
+            "ZFEL:POWER_MAX",
+            "ZFEL:EXIT_POWER",
+            "ZFEL:PULSE_ENERGY",
+            "GDET:FEE1:361:ENRC",
+            "GDET:FEE1:361:ENRCHSTCUHBR",
+            "ZFEL:PULSE_INTENSITY_STD_REL",
+            "ZFEL:MODEL_EVAL_ID",
+        }
 
     assert expected_pvs.issubset(supported)
 
@@ -99,6 +99,7 @@ def test_scalar_kact_write_updates_zfel_backend():
         atol=0.0,
     )
 
+
 def test_machine_style_pv_aliases():
     model = get_cu_hxr_zfel_model()
 
@@ -120,6 +121,7 @@ def test_machine_style_pv_aliases():
         state["pulse_intensity_p80"],
         state["GDET:FEE1:361:ENRCHSTCUHBR"],
     )
+
 
 def test_machine_style_pv_write():
     model = get_cu_hxr_zfel_model()

@@ -157,8 +157,7 @@ class ZFELPVModel(LUMEModel):
                 "ZFEL:POWER_MAX": "power_max",
                 "ZFEL:EXIT_POWER": "exit_power",
                 "ZFEL:PULSE_ENERGY": "pulse_energy",
-                "ZFEL:PULSE_INTENSITY_STD_REL":
-                    "pulse_intensity_std_relative",
+                "ZFEL:PULSE_INTENSITY_STD_REL": "pulse_intensity_std_relative",
                 "ZFEL:MODEL_EVAL_ID": "model_eval_id",
             }
         )
@@ -215,10 +214,7 @@ class ZFELPVModel(LUMEModel):
         return self._variables
 
     def _get(self, names):
-        return {
-            name: self._state[self._pv_aliases.get(name, name)]
-            for name in names
-        }
+        return {name: self._state[self._pv_aliases.get(name, name)] for name in names}
 
     def _set(self, values: dict[str, Any]) -> None:
         """
