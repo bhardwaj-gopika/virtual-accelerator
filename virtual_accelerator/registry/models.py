@@ -188,7 +188,7 @@ MODELS: dict[str, ModelEntry] = {
     ),
     "bmad_f2_elec": ModelEntry(
         name="bmad_f2_elec",
-        description="Bmad FACET-II e- linac, injector handoff -> END",
+        description="Bmad FACET-II e- linac, CATHODEF -> END",
         facility="facet2",
         simulator="bmad",
         builder="virtual_accelerator.models.facet2:get_facet_bmad_model",
