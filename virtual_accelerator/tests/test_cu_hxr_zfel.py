@@ -5,38 +5,9 @@ import pytest
 pytest.importorskip("zfel")
 
 from virtual_accelerator.models.cu_hxr_zfel import (
-    build_cu_hxr_zfel_runner_config,
     get_cu_hxr_zfel_model,
-    get_cu_hxr_zfel_runner,
 )
 from virtual_accelerator.zfel.undulator_mapping import HXR_CELLS
-
-
-class DummyRunner:
-    """
-    Minimal stand-in for lume-pva Runner.
-
-    This allows runner configuration to be tested without
-    starting an EPICS server.
-    """
-
-    def __init__(self, model, config=None):
-        self.model = model
-        self.config = config
-
-    @staticmethod
-    def generate_config(model, prefix=""):
-        return {
-            "prefix": prefix,
-            "protocol": ["pva"],
-            "update_rate": 0.1,
-            "variables": {
-                name: {
-                    "pv": f"{prefix}{name}",
-                }
-                for name in model.supported_variables
-            },
-        }
 
 
 def test_cu_hxr_zfel_model_variables():
@@ -47,17 +18,20 @@ def test_cu_hxr_zfel_model_variables():
     for cell in HXR_CELLS:
         assert f"KAct_{cell}" in supported
         assert f"DSKAct_{cell}" in supported
+        assert f"KAct_{cell}" in supported
+        assert f"DSKAct_{cell}" in supported
 
-    expected_diagnostics = {
-        "power_max",
-        "exit_power",
-        "pulse_energy",
-        "pulse_intensity_mean",
-        "pulse_intensity_p80",
-        "pulse_intensity_std_relative",
+        expected_pvs = {
+        "ZFEL:POWER_MAX",
+        "ZFEL:EXIT_POWER",
+        "ZFEL:PULSE_ENERGY",
+        "GDET:FEE1:361:ENRC",
+        "GDET:FEE1:361:ENRCHSTCUHBR",
+        "ZFEL:PULSE_INTENSITY_STD_REL",
+        "ZFEL:MODEL_EVAL_ID",
     }
 
-    assert expected_diagnostics.issubset(supported)
+    assert expected_pvs.issubset(supported)
 
     state = model.get(
         [
@@ -125,42 +99,48 @@ def test_scalar_kact_write_updates_zfel_backend():
         atol=0.0,
     )
 
-
-def test_runner_config_uses_machine_style_pvs():
+def test_machine_style_pv_aliases():
     model = get_cu_hxr_zfel_model()
 
-    config = build_cu_hxr_zfel_runner_config(
-        DummyRunner,
-        model,
-        protocols=("ca",),
-        update_rate=0.5,
+    state = model.get(
+        [
+            "KAct_14",
+            "USEG:UNDH:1450:KAct",
+            "pulse_intensity_p80",
+            "GDET:FEE1:361:ENRCHSTCUHBR",
+        ]
     )
 
-    assert config["prefix"] == ""
-    assert config["protocol"] == ["ca"]
-    assert config["update_rate"] == 0.5
-
-    assert config["variables"]["KAct_14"]["pv"] == "USEG:UNDH:1450:KAct"
-
-    assert config["variables"]["DSKAct_14"]["pv"] == "USEG:UNDH:1450:DSKAct"
-
-    assert config["variables"]["pulse_energy"]["pv"] == "ZFEL:PULSE_ENERGY"
-
-    assert config["variables"]["pulse_intensity_mean"]["pv"] == "GDET:FEE1:361:ENRC"
-
-    assert (
-        config["variables"]["pulse_intensity_p80"]["pv"] == "GDET:FEE1:361:ENRCHSTCUHBR"
+    assert np.isclose(
+        state["KAct_14"],
+        state["USEG:UNDH:1450:KAct"],
     )
 
-
-def test_zfel_runner_factory_returns_configured_runner():
-    runner = get_cu_hxr_zfel_runner(
-        DummyRunner,
-        protocols=("ca",),
+    assert np.isclose(
+        state["pulse_intensity_p80"],
+        state["GDET:FEE1:361:ENRCHSTCUHBR"],
     )
 
-    assert isinstance(runner, DummyRunner)
+def test_machine_style_pv_write():
+    model = get_cu_hxr_zfel_model()
 
-    assert runner.config["variables"]["KAct_14"]["pv"] == "USEG:UNDH:1450:KAct"
+    target_k = 3.48
 
-    assert runner.config["variables"]["pulse_energy"]["pv"] == "ZFEL:PULSE_ENERGY"
+    model.set(
+        {
+            "USEG:UNDH:4750:KAct": target_k,
+        }
+    )
+
+    state = model.get(
+        [
+            "KAct_47",
+            "USEG:UNDH:4750:KAct",
+        ]
+    )
+
+    assert np.isclose(state["KAct_47"], target_k)
+    assert np.isclose(
+        state["USEG:UNDH:4750:KAct"],
+        target_k,
+    )
