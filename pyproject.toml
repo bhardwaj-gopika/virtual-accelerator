@@ -71,7 +71,6 @@ all = [
     "distgen",
     "facet2-inj-ml-model @ git+https://github.com/slaclab/facet2_inj_ml_model",
     "lcls-cu-inj-model @ git+https://github.com/slaclab/lcls_cu_injector_ml_model.git",
-    "zfel @ git+https://github.com/slaclab/zfel.git",
 ]
 dev = [
     "pytest",
