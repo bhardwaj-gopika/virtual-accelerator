@@ -1,8 +1,8 @@
 """Single entry point for building virtual-accelerator models by name.
 
-from virtual_accelerator.registry import get_model, models_available
+from virtual_accelerator.registry import get_model, list_models
 
-print(models_available)
+print(list_models())
 model = get_model("bmad_cu_hxr", end_ele="OTR4", track_beam=True)
 model = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03")
 """
@@ -17,31 +17,66 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "get_model",
-    "models_available",
     "list_models",
     "list_handoff_points",
     "common_handoff_points",
 ]
 
 
+# Display labels for the facility/simulator enums. Registry keys stay lower case,
+# but the printed table uses the canonical spelling ("LCLS", "Facet2", "IMPACT").
+_FACILITY_LABELS = {
+    "lcls": "LCLS",
+    "hxr": "HXR",
+    "sxr": "SXR",
+    "lcls2": "LCLS2",
+    "facet2": "Facet2",
+}
+_SIMULATOR_LABELS = {
+    "bmad": "Bmad",
+    "impact": "IMPACT",
+    "surrogate": "Surrogate",
+    "cheetah": "Cheetah",
+}
+
+
 class _ModelCatalog(dict):
-    """Mapping of model name -> description that prints as an aligned table."""
+    """Mapping of model name -> ModelEntry that prints as a bordered ASCII table."""
+
+    _COLS = ("name", "facility", "simulator", "description")
 
     def __repr__(self) -> str:
         if not self:
             return "(no models registered)"
-        width = max(len(name) for name in self)
-        return "\n".join(f"{name:<{width}}  {desc}" for name, desc in self.items())
+        rows = [
+            (
+                entry.name,
+                _FACILITY_LABELS.get(entry.facility, entry.facility),
+                _SIMULATOR_LABELS.get(entry.simulator, entry.simulator),
+                entry.description,
+            )
+            for entry in self.values()
+        ]
+        widths = [
+            max(len(col), *(len(row[i]) for row in rows))
+            for i, col in enumerate(self._COLS)
+        ]
+        sep = "+-" + "-+-".join("-" * w for w in widths) + "-+"
+        header = (
+            "| " + " | ".join(f"{c:<{w}}" for c, w in zip(self._COLS, widths)) + " |"
+        )
+        body = [
+            "| " + " | ".join(f"{v:<{w}}" for v, w in zip(row, widths)) + " |"
+            for row in rows
+        ]
+        return "\n".join([sep, header, sep, *body, sep])
 
 
-models_available = _ModelCatalog(
-    (name, entry.description) for name, entry in MODELS.items()
-)
-
-
-def list_models(facility: str | None = None, simulator: str | None = None) -> list[str]:
+def list_models(
+    facility: str | None = None, simulator: str | None = None
+) -> "_ModelCatalog":
     """
-    Get the names of registered models, optionally filtered.
+    Get registered models, optionally filtered, as a printable table.
 
     Parameters
     ----------
@@ -52,15 +87,16 @@ def list_models(facility: str | None = None, simulator: str | None = None) -> li
 
     Returns
     -------
-    list[str]
-        Registry names, in registration order.
+    _ModelCatalog
+        Mapping of registry name to ``ModelEntry``, in registration order. Prints
+        as an ASCII table with facility and simulator columns; iterate for names.
     """
-    return [
-        name
+    return _ModelCatalog(
+        (name, entry)
         for name, entry in MODELS.items()
         if (facility is None or entry.facility == facility)
         and (simulator is None or entry.simulator == simulator)
-    ]
+    )
 
 
 def list_handoff_points(model_name: str) -> tuple[str, ...]:

@@ -13,23 +13,26 @@ from virtual_accelerator.registry import (
     get_model,
     list_handoff_points,
     list_models,
-    models_available,
 )
 from virtual_accelerator.registry.models import MODELS
 
 
 class TestDiscovery:
     def test_all_entries_listed(self):
-        assert set(models_available) == set(MODELS)
+        assert set(list_models()) == set(MODELS)
 
     def test_repr_is_aligned_table(self):
-        text = repr(models_available)
+        text = repr(list_models())
         assert "impact_cu_inj" in text
-        assert len(text.splitlines()) == len(MODELS)
+        # header row + separators + one row per model
+        assert "facility" in text and "simulator" in text
+        assert "IMPACT" in text and "Bmad" in text and "Facet2" in text
+        # 3 border rows + 1 header + one row per model
+        assert len(text.splitlines()) == len(MODELS) + 4
 
     def test_filter_by_engine_and_facility(self):
-        assert list_models(simulator="bmad") == ["bmad_cu_hxr", "bmad_f2_elec"]
-        assert list_models(facility="facet2") == [
+        assert list(list_models(simulator="bmad")) == ["bmad_cu_hxr", "bmad_f2_elec"]
+        assert list(list_models(facility="facet2")) == [
             "impact_f2e_inj",
             "surrogate_f2e_inj",
             "bmad_f2_elec",
@@ -298,6 +301,115 @@ class TestOverlapRemoval:
         up = _FakeStage({"SHARED": _ReadOnlyVar()})
         with pytest.raises(TypeError, match="unregister_action_variable"):
             _strip_overlapping_variables(up, Fixed(), "up", "down")
+
+
+class TestStagedOverlap:
+    """End-to-end coverage of ``get_model``'s staging block.
+
+    Verifies the loop after ``_route_kwargs`` that assembles stages, forces beam
+    tracking on, applies the exclusive-end handoff, then hands consecutive stage
+    pairs to ``_strip_overlapping_variables`` before wrapping in ``StagedModel``.
+    """
+
+    @staticmethod
+    def _install(monkeypatch, stages_by_name):
+        """Patch registry internals so ``get_model`` builds without a simulator.
+
+        ``_build`` returns the prepared ``_FakeStage`` for the requested entry;
+        ``StagedModel`` is stubbed to a container that skips its own duplicate-
+        variable validation, so the assertions can focus on the registry's own
+        overlap handling rather than reproducing StagedModel's checks.
+        """
+        import virtual_accelerator.registry as reg
+        import lume.staged_model as staged_module
+
+        def fake_build(entry, call_kwargs, start_ele, end_ele):
+            return stages_by_name[entry.name]
+
+        class FakeStagedModel:
+            def __init__(self, instances):
+                self.lume_model_instances = list(instances)
+
+            @property
+            def supported_variables(self):
+                return {
+                    name: var
+                    for stage in self.lume_model_instances
+                    for name, var in stage.supported_variables.items()
+                }
+
+        monkeypatch.setattr(reg, "_build", fake_build)
+        monkeypatch.setattr(staged_module, "StagedModel", FakeStagedModel)
+
+    def test_read_only_overlap_is_removed_downstream(self, monkeypatch):
+        upstream = _FakeStage(
+            {"YAG03:IMAGE": _ReadOnlyVar(), "IMPACT:ONLY": _ReadOnlyVar()}
+        )
+        downstream = _FakeStage(
+            {"YAG03:IMAGE": _ReadOnlyVar(), "BMAD:ONLY": _ReadOnlyVar()}
+        )
+        self._install(
+            monkeypatch,
+            {"impact_cu_inj": upstream, "bmad_cu_hxr": downstream},
+        )
+
+        model = get_model(
+            ["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=100
+        )
+
+        assert set(model.supported_variables) == {
+            "YAG03:IMAGE",
+            "IMPACT:ONLY",
+            "BMAD:ONLY",
+        }
+        # Duplicate lives only on the upstream stage after the strip.
+        assert "YAG03:IMAGE" in upstream.supported_variables
+        assert "YAG03:IMAGE" not in downstream.supported_variables
+
+    def test_writable_overlap_raises_before_staged_model_is_built(self, monkeypatch):
+        upstream = _FakeStage({"QUAD:BCTRL": _WritableVar()})
+        downstream = _FakeStage({"QUAD:BCTRL": _WritableVar()})
+        self._install(
+            monkeypatch,
+            {"impact_cu_inj": upstream, "bmad_cu_hxr": downstream},
+        )
+
+        with pytest.raises(ValueError, match="writable variable"):
+            get_model(
+                ["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=100
+            )
+        # Nothing was mutated -- the downstream stage keeps its copy for retry.
+        assert "QUAD:BCTRL" in downstream.supported_variables
+
+    def test_no_overlap_leaves_both_stages_intact(self, monkeypatch):
+        upstream = _FakeStage({"IMPACT:ONLY": _ReadOnlyVar()})
+        downstream = _FakeStage({"BMAD:ONLY": _ReadOnlyVar()})
+        self._install(
+            monkeypatch,
+            {"impact_cu_inj": upstream, "bmad_cu_hxr": downstream},
+        )
+
+        model = get_model(
+            ["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=100
+        )
+
+        assert set(upstream.supported_variables) == {"IMPACT:ONLY"}
+        assert set(downstream.supported_variables) == {"BMAD:ONLY"}
+        assert set(model.supported_variables) == {"IMPACT:ONLY", "BMAD:ONLY"}
+
+    def test_stages_are_ordered_upstream_first(self, monkeypatch):
+        upstream = _FakeStage({"IMPACT:ONLY": _ReadOnlyVar()})
+        downstream = _FakeStage({"BMAD:ONLY": _ReadOnlyVar()})
+        self._install(
+            monkeypatch,
+            {"impact_cu_inj": upstream, "bmad_cu_hxr": downstream},
+        )
+
+        model = get_model(
+            ["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=100
+        )
+
+        assert model.lume_model_instances == [upstream, downstream]
 
 
 class TestElementNameCase:

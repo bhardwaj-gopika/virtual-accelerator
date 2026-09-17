@@ -154,7 +154,7 @@ MODELS: dict[str, ModelEntry] = {
         builder="virtual_accelerator.models.cu_hxr:get_cu_hxr_cheetah_model",
         extras=("cheetah",),
         params={"n_particles": 1000},
-        handoff_points=("CATHODE", "END"),
+        handoff_points=("CATHODE", *_ALL_CU_HXR_SCREENS, "END"),
         shared_params=frozenset({"n_particles"}),
     ),
     "impact_f2e_inj": ModelEntry(
