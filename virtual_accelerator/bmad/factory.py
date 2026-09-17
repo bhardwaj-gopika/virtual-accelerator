@@ -45,6 +45,7 @@ def build_bmad_model(
     custom_tao_commands: list[str] | None = None,
     custom_aliases: dict[str, str] | None = None,
     end_mode: str = "end",
+    start_mode: str = "beginning",
 ):
     """
 
@@ -68,6 +69,8 @@ def build_bmad_model(
         Dictionary of custom element aliases, by default None.
     end_mode : str, optional
         Mode for determining the end of the lattice slice, by default "end".
+    start_mode : str, optional
+        Mode for determining the start of the lattice slice, by default "beginning".
 
 
     """
@@ -97,11 +100,24 @@ def build_bmad_model(
     if end_mode == "beginning":
         # stop tao at second to last element
         normalized_element_list = get_normalized_element_names(tao)
-        new_end_element = normalized_element_list[
+        end_element = normalized_element_list[
             normalized_element_list.index(end_element) - 1
         ]
         tao = Tao(
-            f"-init {init_file} -noplot -slice_lattice {start_element}:{new_end_element}"
+            f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}"
+        )
+
+    # modify the start element if start_mode is "end"
+    if start_mode not in ["beginning", "end"]:
+        raise ValueError(f"Invalid start_mode: {start_mode}. Must be 'beginning' or 'end'.")
+
+    if start_mode == "end":
+        normalized_element_list = get_normalized_element_names(tao)
+        start_element = normalized_element_list[
+            normalized_element_list.index(start_element) + 1
+        ]
+        tao = Tao(
+            f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}"
         )
 
     # set tracking to start_element
