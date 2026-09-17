@@ -109,7 +109,9 @@ def build_bmad_model(
 
     # modify the start element if start_mode is "end"
     if start_mode not in ["beginning", "end"]:
-        raise ValueError(f"Invalid start_mode: {start_mode}. Must be 'beginning' or 'end'.")
+        raise ValueError(
+            f"Invalid start_mode: {start_mode}. Must be 'beginning' or 'end'."
+        )
 
     if start_mode == "end":
         normalized_element_list = get_normalized_element_names(tao)

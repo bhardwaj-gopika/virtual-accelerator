@@ -279,7 +279,7 @@ class TestCUHXRCheetah:
         assert np.isfinite(updated_image).all()
 
     def test_cu_hxr_screen_resolution_matches_yaml_and_expected_range(self):
-        model = get_cu_hxr_cheetah_model()
+        model = get_cu_hxr_cheetah_model(start_element="OTR1")
 
         resolution_pv = "OTRS:IN20:541:RESOLUTION"
         assert resolution_pv in model.supported_variables

@@ -123,7 +123,13 @@ def get_cu_hxr_staged_model(n_particles: int = 1000, **kwargs) -> StagedModel:
     return staged_model
 
 
-def get_cu_hxr_cheetah_model(n_particles: int = 1000, start_element="OTR2", end_element="TD11"):
+def get_cu_hxr_cheetah_model(
+    n_particles: int = 1000,
+    start_element="OTR2",
+    end_element="TD11",
+    start_mode="beginning",
+    end_mode="end",
+):
     """
     Get the LUMECheetahModel for the CU_HXR lattice.
 
@@ -167,7 +173,12 @@ def get_cu_hxr_cheetah_model(n_particles: int = 1000, start_element="OTR2", end_
     segment = Segment.from_lattice_json(
         os.path.join(lcls_lattice, "cheetah/nc_hxr.json")
     )
-    segment = segment.subcell(start=start_element, end=end_element)
+    segment = segment.subcell(
+        start=start_element.lower(),
+        end=end_element.lower(),
+        include_start=start_mode == "beginning",
+        include_end=end_mode == "end",
+    )
 
     # Define the simulator using lattice and particle beam
     simulator = CheetahSimulator(
