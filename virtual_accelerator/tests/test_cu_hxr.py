@@ -207,7 +207,7 @@ class TestCUHXRBmad:
         model = get_cu_hxr_bmad_model(
             end_element="OTR4", track_beam=False, end_mode="beginning"
         )
-        assert model.get("name")[-1] == "DB00A"
+        assert model.get_value("name")[-1] == "DB00A"
 
         model = get_cu_hxr_bmad_model(
             start_element="YAG03",
@@ -215,7 +215,7 @@ class TestCUHXRBmad:
             track_beam=False,
             end_mode="beginning",
         )
-        assert model.get("name")[-1] == "DH06"
+        assert model.get_value("name")[-1] == "DH06"
 
 
 class TestCUHXRCheetah:

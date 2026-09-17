@@ -122,9 +122,6 @@ def build_bmad_model(
             f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}"
         )
 
-    # set tracking to start_element
-    tao.cmd(f"set beam track_start = {start_element}")
-
     # apply any custom tao commands (e.g. for setting up custom aliases or other tao configuration needed for the model)
     if custom_tao_commands is not None:
         for cmd in custom_tao_commands:
