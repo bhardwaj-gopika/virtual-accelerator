@@ -39,22 +39,22 @@ Print all registered models as a table:
 
 ```python
 >>> print(list_models())
-+-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
-| name                              | facility | simulator      | start    | end     | description                                           |
-+-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
-| impact_cu_inj                     | LCLS     | IMPACT         | CATHODE  | YAG03   | LCLS CU injector                                      |
-| bmad_cu_hxr                       | LCLS     | Bmad           | OTR2     | END     | LCLS CU-HXR linac                                     |
-| surrogate_cu_inj                  | LCLS     | Surrogate      | CATHODE  | OTR2    | LCLS CU injector (NN surrogate)                       |
-| cheetah_cu_hxr                    | LCLS     | Cheetah        | CATHODE  | END     | LCLS CU-HXR full beamline                             |
-| impact_f2e_inj                    | Facet2   | IMPACT         | CATHODEF | PR10241 | FACET-II injector                                     |
-| surrogate_f2e_inj                 | Facet2   | Surrogate      | CATHODEF | PR10241 | FACET-II injector (NN surrogate)                      |
-| bmad_f2_elec                      | Facet2   | Bmad           | L0AFEND  | END     | FACET-II e- linac                                     |
-+-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
-| impact_cu_inj -> bmad_cu_hxr      | LCLS     | IMPACT+Bmad    | CATHODE  | END     | LCLS CU injector -> LCLS CU-HXR linac                 |
-| surrogate_cu_inj -> bmad_cu_hxr   | LCLS     | Surrogate+Bmad | CATHODE  | END     | LCLS CU injector (NN surrogate) -> LCLS CU-HXR linac  |
-| impact_f2e_inj -> bmad_f2_elec    | Facet2   | IMPACT+Bmad    | CATHODEF | END     | FACET-II injector -> FACET-II e- linac                |
-| surrogate_f2e_inj -> bmad_f2_elec | Facet2   | Surrogate+Bmad | CATHODEF | END     | FACET-II injector (NN surrogate) -> FACET-II e- linac |
-+-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
++--------------------------+----------+----------------+----------+---------+-----------------------------------+
+| name                     | facility | simulator      | start    | end     | description                       |
++--------------------------+----------+----------------+----------+---------+-----------------------------------+
+| impact_cu_inj            | LCLS     | IMPACT         | CATHODE  | YAG03   | LCLS CU injector                  |
+| bmad_cu_hxr              | LCLS     | Bmad           | OTR2     | END     | LCLS CU-HXR linac                 |
+| surrogate_cu_inj         | LCLS     | Surrogate      | CATHODE  | OTR2    | LCLS CU injector (NN surrogate)   |
+| cheetah_cu_hxr           | LCLS     | Cheetah        | CATHODE  | END     | LCLS CU-HXR full beamline         |
+| impact_f2e_inj           | Facet2   | IMPACT         | CATHODEF | PR10241 | FACET-II injector                 |
+| surrogate_f2e_inj        | Facet2   | Surrogate      | CATHODEF | PR10241 | FACET-II injector (NN surrogate)  |
+| bmad_f2_elec             | Facet2   | Bmad           | CATHODEF | END     | FACET-II e- linac                 |
++--------------------------+----------+----------------+----------+---------+-----------------------------------+
+| high_fidelity_cu_hxr_s2e | LCLS     | IMPACT+Bmad    | CATHODE  | END     | impact_cu_inj -> bmad_cu_hxr      |
+| fast_cu_hxr_s2e          | LCLS     | Surrogate+Bmad | CATHODE  | END     | surrogate_cu_inj -> bmad_cu_hxr   |
+| high_fidelity_facet2_s2e | Facet2   | IMPACT+Bmad    | CATHODEF | END     | impact_f2e_inj -> bmad_f2_elec    |
+| fast_facet2_s2e          | Facet2   | Surrogate+Bmad | CATHODEF | END     | surrogate_f2e_inj -> bmad_f2_elec |
++--------------------------+----------+----------------+----------+---------+-----------------------------------+
 
 ```
 
@@ -173,12 +173,12 @@ before any model is built, so a bad handoff never costs an IMPACT run.
 
 Standard chains:
 
-| Upstream | Downstream | Handoff |
-|---|---|---|
-| `impact_cu_inj` | `bmad_cu_hxr` | YAG03 |
-| `surrogate_cu_inj` | `bmad_cu_hxr` | OTR2 (inferred) |
-| `impact_f2e_inj` | `bmad_f2_elec` | PR10241 (inferred) |
-| `surrogate_f2e_inj` | `bmad_f2_elec` | PR10241 (inferred) |
+| Alias | Upstream | Downstream | Handoff |
+|---|---|---|---|
+| `high_fidelity_cu_hxr_s2e` | `impact_cu_inj` | `bmad_cu_hxr` | YAG03 |
+| `fast_cu_hxr_s2e` | `surrogate_cu_inj` | `bmad_cu_hxr` | OTR2 (inferred) |
+| `high_fidelity_facet2_s2e` | `impact_f2e_inj` | `bmad_f2_elec` | PR10241 (inferred) |
+| `fast_facet2_s2e` | `surrogate_f2e_inj` | `bmad_f2_elec` | PR10241 (inferred) |
 
 LCLS needs two handoff planes because its injector models end at different places
 and neither can move: the NN surrogate predicts `OTRS:IN20:571` (OTR2) at 135 MeV

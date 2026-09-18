@@ -200,7 +200,7 @@ MODELS: dict[str, ModelEntry] = {
         builder="virtual_accelerator.models.facet2:get_facet_bmad_model",
         extras=("bmad",),
         params={
-            "start_element": "L0AFEND",
+            "start_element": "CATHODEF",
             "end_element": "END",
             "track_beam": False,
             "custom_beam_path": None,
@@ -220,7 +220,7 @@ MODELS: dict[str, ModelEntry] = {
         ),
         start_param="start_element",
         end_param="end_element",
-        default_start="L0AFEND",
+        default_start="CATHODEF",
         default_end="END",
     ),
 }

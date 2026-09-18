@@ -40,13 +40,15 @@ _SIMULATOR_LABELS = {
 }
 
 
-# Standard staged chains -- discovery aids only, not registry entries. Listed so
-# `list_models` can show that e.g. impact_cu_inj feeds bmad_cu_hxr at YAG03.
-_STANDARD_CHAINS: tuple[tuple[str, str], ...] = (
-    ("impact_cu_inj", "bmad_cu_hxr"),
-    ("surrogate_cu_inj", "bmad_cu_hxr"),
-    ("impact_f2e_inj", "bmad_f2_elec"),
-    ("surrogate_f2e_inj", "bmad_f2_elec"),
+# Standard staged chains -- discovery aids only, not registry entries. Each row is
+# (alias, upstream, downstream); alias is a short handle that identifies the chain
+# (e.g. high_fidelity_cu_hxr_s2e) so users can refer to it without spelling out
+# both stages every time.
+_STANDARD_CHAINS: tuple[tuple[str, str, str], ...] = (
+    ("high_fidelity_cu_hxr_s2e", "impact_cu_inj", "bmad_cu_hxr"),
+    ("fast_cu_hxr_s2e", "surrogate_cu_inj", "bmad_cu_hxr"),
+    ("high_fidelity_facet2_s2e", "impact_f2e_inj", "bmad_f2_elec"),
+    ("fast_facet2_s2e", "surrogate_f2e_inj", "bmad_f2_elec"),
 )
 
 
@@ -71,9 +73,8 @@ class _ModelCatalog(dict):
         )
 
     def _chain_row(
-        self, upstream: ModelEntry, downstream: ModelEntry
+        self, alias: str, upstream: ModelEntry, downstream: ModelEntry
     ) -> tuple[str, ...]:
-        name = f"{upstream.name} -> {downstream.name}"
         simulator = "+".join(
             dict.fromkeys(
                 _SIMULATOR_LABELS.get(e.simulator, e.simulator)
@@ -81,12 +82,12 @@ class _ModelCatalog(dict):
             )
         )
         return (
-            name,
+            alias,
             _FACILITY_LABELS.get(upstream.facility, upstream.facility),
             simulator,
             upstream.default_start or "-",
             downstream.default_end or "-",
-            f"{upstream.description} -> {downstream.description}",
+            f"{upstream.name} -> {downstream.name}",
         )
 
     def __repr__(self) -> str:
@@ -94,8 +95,8 @@ class _ModelCatalog(dict):
             return "(no models registered)"
         rows = [self._row(entry) for entry in self.values()]
         chain_rows = [
-            self._chain_row(self[up], self[down])
-            for up, down in self._chains
+            self._chain_row(alias, self[up], self[down])
+            for alias, up, down in self._chains
             if up in self and down in self
         ]
         all_rows = rows + chain_rows
@@ -150,7 +151,9 @@ def list_models(
     # Only include a chain when both stages survived the filter, so the block
     # tracks the visible rows rather than advertising unreachable staging.
     chains = tuple(
-        (up, down) for up, down in _STANDARD_CHAINS if up in kept and down in kept
+        (alias, up, down)
+        for alias, up, down in _STANDARD_CHAINS
+        if up in kept and down in kept
     )
     return _ModelCatalog(kept.items(), chains=chains)
 
