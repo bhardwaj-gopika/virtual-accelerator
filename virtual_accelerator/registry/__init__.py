@@ -40,25 +40,67 @@ _SIMULATOR_LABELS = {
 }
 
 
+# Standard staged chains -- discovery aids only, not registry entries. Listed so
+# `list_models` can show that e.g. impact_cu_inj feeds bmad_cu_hxr at YAG03.
+_STANDARD_CHAINS: tuple[tuple[str, str], ...] = (
+    ("impact_cu_inj", "bmad_cu_hxr"),
+    ("surrogate_cu_inj", "bmad_cu_hxr"),
+    ("impact_f2e_inj", "bmad_f2_elec"),
+    ("surrogate_f2e_inj", "bmad_f2_elec"),
+)
+
+
 class _ModelCatalog(dict):
     """Mapping of model name -> ModelEntry that prints as a bordered ASCII table."""
 
-    _COLS = ("name", "facility", "simulator", "description")
+    _COLS = ("name", "facility", "simulator", "start", "end", "description")
+
+    def __init__(self, entries, chains=()):
+        super().__init__(entries)
+        # Extra display-only rows for standard staged chains.
+        self._chains = tuple(chains)
+
+    def _row(self, entry: ModelEntry) -> tuple[str, ...]:
+        return (
+            entry.name,
+            _FACILITY_LABELS.get(entry.facility, entry.facility),
+            _SIMULATOR_LABELS.get(entry.simulator, entry.simulator),
+            entry.default_start or "-",
+            entry.default_end or "-",
+            entry.description,
+        )
+
+    def _chain_row(
+        self, upstream: ModelEntry, downstream: ModelEntry
+    ) -> tuple[str, ...]:
+        name = f"{upstream.name} -> {downstream.name}"
+        simulator = "+".join(
+            dict.fromkeys(
+                _SIMULATOR_LABELS.get(e.simulator, e.simulator)
+                for e in (upstream, downstream)
+            )
+        )
+        return (
+            name,
+            _FACILITY_LABELS.get(upstream.facility, upstream.facility),
+            simulator,
+            upstream.default_start or "-",
+            downstream.default_end or "-",
+            f"{upstream.description} -> {downstream.description}",
+        )
 
     def __repr__(self) -> str:
         if not self:
             return "(no models registered)"
-        rows = [
-            (
-                entry.name,
-                _FACILITY_LABELS.get(entry.facility, entry.facility),
-                _SIMULATOR_LABELS.get(entry.simulator, entry.simulator),
-                entry.description,
-            )
-            for entry in self.values()
+        rows = [self._row(entry) for entry in self.values()]
+        chain_rows = [
+            self._chain_row(self[up], self[down])
+            for up, down in self._chains
+            if up in self and down in self
         ]
+        all_rows = rows + chain_rows
         widths = [
-            max(len(col), *(len(row[i]) for row in rows))
+            max(len(col), *(len(row[i]) for row in all_rows))
             for i, col in enumerate(self._COLS)
         ]
         sep = "+-" + "-+-".join("-" * w for w in widths) + "-+"
@@ -67,9 +109,15 @@ class _ModelCatalog(dict):
         )
         body = [
             "| " + " | ".join(f"{v:<{w}}" for v, w in zip(row, widths)) + " |"
-            for row in rows
+            for row in all_rows
         ]
-        return "\n".join([sep, header, sep, *body, sep])
+        parts = [sep, header, sep, *body, sep]
+        if chain_rows:
+            # A second separator between single models and staged chains so the
+            # table makes the split obvious rather than looking like more entries.
+            split_at = 3 + len(rows)
+            parts.insert(split_at, sep)
+        return "\n".join(parts)
 
 
 def list_models(
@@ -89,14 +137,22 @@ def list_models(
     -------
     _ModelCatalog
         Mapping of registry name to ``ModelEntry``, in registration order. Prints
-        as an ASCII table with facility and simulator columns; iterate for names.
+        as an ASCII table with facility, simulator, start, end and description
+        columns, plus a block of standard staged chains as discovery aids.
+        Iterate for names.
     """
-    return _ModelCatalog(
-        (name, entry)
+    kept = {
+        name: entry
         for name, entry in MODELS.items()
         if (facility is None or entry.facility == facility)
         and (simulator is None or entry.simulator == simulator)
+    }
+    # Only include a chain when both stages survived the filter, so the block
+    # tracks the visible rows rather than advertising unreachable staging.
+    chains = tuple(
+        (up, down) for up, down in _STANDARD_CHAINS if up in kept and down in kept
     )
+    return _ModelCatalog(kept.items(), chains=chains)
 
 
 def list_handoff_points(model_name: str) -> tuple[str, ...]:

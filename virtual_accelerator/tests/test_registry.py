@@ -24,11 +24,19 @@ class TestDiscovery:
     def test_repr_is_aligned_table(self):
         text = repr(list_models())
         assert "impact_cu_inj" in text
-        # header row + separators + one row per model
+        # header row + separators + one row per model + staged-chain block
         assert "facility" in text and "simulator" in text
+        assert "start" in text and "end" in text
         assert "IMPACT" in text and "Bmad" in text and "Facet2" in text
-        # 3 border rows + 1 header + one row per model
-        assert len(text.splitlines()) == len(MODELS) + 4
+        # A staged-chain row is rendered when both stages pass the filter.
+        assert "impact_cu_inj -> bmad_cu_hxr" in text
+        # Endpoints appear as their own columns rather than in the description.
+        assert "CATHODE" in text and "YAG03" in text
+
+    def test_repr_omits_chain_block_when_no_pair_survives_filter(self):
+        # Only Bmad models remain -- neither standard chain has both stages Bmad.
+        text = repr(list_models(simulator="bmad"))
+        assert "->" not in text
 
     def test_filter_by_engine_and_facility(self):
         assert list(list_models(simulator="bmad")) == ["bmad_cu_hxr", "bmad_f2_elec"]

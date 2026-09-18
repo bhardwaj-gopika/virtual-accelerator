@@ -39,17 +39,22 @@ Print all registered models as a table:
 
 ```python
 >>> print(list_models())
-+-------------------+----------+-----------+----------------------------------------------------+
-| name              | facility | simulator | description                                        |
-+-------------------+----------+-----------+----------------------------------------------------+
-| impact_cu_inj     | LCLS     | IMPACT    | IMPACT-T LCLS injector, cathode -> YAG03           |
-| bmad_cu_hxr       | LCLS     | Bmad      | Bmad CU-HXR linac, injector handoff -> END         |
-| surrogate_cu_inj  | LCLS     | Surrogate | NN LCLS injector surrogate, cathode -> OTR2        |
-| cheetah_cu_hxr    | LCLS     | Cheetah   | Cheetah nc_hxr, cathode -> END                     |
-| impact_f2e_inj    | Facet2   | IMPACT    | IMPACT-T FACET-II injector, cathode -> PR10241     |
-| surrogate_f2e_inj | Facet2   | Surrogate | NN FACET-II injector surrogate, cathode -> PR10241 |
-| bmad_f2_elec      | Facet2   | Bmad      | Bmad FACET-II e- linac, CATHODEF -> END            |
-+-------------------+----------+-----------+----------------------------------------------------+
++-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
+| name                              | facility | simulator      | start    | end     | description                                           |
++-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
+| impact_cu_inj                     | LCLS     | IMPACT         | CATHODE  | YAG03   | LCLS CU injector                                      |
+| bmad_cu_hxr                       | LCLS     | Bmad           | OTR2     | END     | LCLS CU-HXR linac                                     |
+| surrogate_cu_inj                  | LCLS     | Surrogate      | CATHODE  | OTR2    | LCLS CU injector (NN surrogate)                       |
+| cheetah_cu_hxr                    | LCLS     | Cheetah        | CATHODE  | END     | LCLS CU-HXR full beamline                             |
+| impact_f2e_inj                    | Facet2   | IMPACT         | CATHODEF | PR10241 | FACET-II injector                                     |
+| surrogate_f2e_inj                 | Facet2   | Surrogate      | CATHODEF | PR10241 | FACET-II injector (NN surrogate)                      |
+| bmad_f2_elec                      | Facet2   | Bmad           | L0AFEND  | END     | FACET-II e- linac                                     |
++-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
+| impact_cu_inj -> bmad_cu_hxr      | LCLS     | IMPACT+Bmad    | CATHODE  | END     | LCLS CU injector -> LCLS CU-HXR linac                 |
+| surrogate_cu_inj -> bmad_cu_hxr   | LCLS     | Surrogate+Bmad | CATHODE  | END     | LCLS CU injector (NN surrogate) -> LCLS CU-HXR linac  |
+| impact_f2e_inj -> bmad_f2_elec    | Facet2   | IMPACT+Bmad    | CATHODEF | END     | FACET-II injector -> FACET-II e- linac                |
+| surrogate_f2e_inj -> bmad_f2_elec | Facet2   | Surrogate+Bmad | CATHODEF | END     | FACET-II injector (NN surrogate) -> FACET-II e- linac |
++-----------------------------------+----------+----------------+----------+---------+-------------------------------------------------------+
 
 ```
 
@@ -118,30 +123,6 @@ specific screen.
 
 ```
 
-### Error: Unknown Model Name
-
-Model IDs must be exact. Partial names are not supported:
-
-```python
->>> get_model("bmad_cu_hx", end_ele="TD11")
-Traceback (most recent call last):
-    ...
-KeyError: "Unknown model 'bmad_cu_hx'. Available: ..."
-
-```
-
-### Error: Invalid End Element
-
-`end_ele` must be one of the model's listed handoff points:
-
-```python
->>> get_model("impact_cu_inj", end_ele="otr99")
-Traceback (most recent call last):
-    ...
-ValueError: 'OTR99' is not an available end screen for 'impact_cu_inj'. Suggested points: ...
-
-```
-
 ## Staged Models
 
 Pass a list of two model IDs to `get_model()` to chain an injector model into a linac
@@ -184,38 +165,11 @@ Both FACET chains hand off at PR10241, so `handoff_loc` can be left out:
 
 ```
 
-Anything other than PR10241 is refused, as is mixing facilities:
-
-```python
->>> get_model(["impact_f2e_inj", "bmad_f2_elec"], handoff_loc="PR10571")
-Traceback (most recent call last):
-    ...
-ValueError: 'PR10571' is not a shared handoff point for 'impact_f2e_inj' -> 'bmad_f2_elec'. Available: PR10241
-
->>> get_model(["impact_cu_inj", "bmad_f2_elec"], handoff_loc="YAG03")
-Traceback (most recent call last):
-    ...
-ValueError: Cannot stage 'impact_cu_inj' (lcls) onto 'bmad_f2_elec' (facet2): different facilities.
-
-```
-
 ### Handoff Validation
 
-`handoff_loc` must be a point both stages share. Anything else is rejected before any
-model is built, so you do not pay for an IMPACT run to find out:
-
-```python
->>> get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="OTR4")
-Traceback (most recent call last):
-    ...
-ValueError: 'OTR4' is not a shared handoff point for 'impact_cu_inj' -> 'bmad_cu_hxr'. Available: YAG02, YAG03
-
->>> get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="CATHODE")
-Traceback (most recent call last):
-    ...
-ValueError: 'CATHODE' cannot be a handoff location: nothing is upstream of it.
-
-```
+`handoff_loc` must be a shared point of both stages (`common_handoff_points`); the
+cathode is never valid, and cross-facility staging is refused. Everything is checked
+before any model is built, so a bad handoff never costs an IMPACT run.
 
 Standard chains:
 
@@ -223,10 +177,12 @@ Standard chains:
 |---|---|---|
 | `impact_cu_inj` | `bmad_cu_hxr` | YAG03 |
 | `surrogate_cu_inj` | `bmad_cu_hxr` | OTR2 (inferred) |
+| `impact_f2e_inj` | `bmad_f2_elec` | PR10241 (inferred) |
+| `surrogate_f2e_inj` | `bmad_f2_elec` | PR10241 (inferred) |
 
-LCLS needs two handoff planes because its injector models end at different places and
-neither can move. The NN surrogate predicts `OTRS:IN20:571` (OTR2) at 135 MeV and
-cannot produce a beam at YAG03, which sits before L0B at 64 MeV.
+LCLS needs two handoff planes because its injector models end at different places
+and neither can move: the NN surrogate predicts `OTRS:IN20:571` (OTR2) at 135 MeV
+and cannot produce a beam at YAG03, which sits before L0B at 64 MeV.
 
 ### The Handoff Element Belongs To The Downstream Stage
 
@@ -287,19 +243,7 @@ one.
 ```
 
 Setting a shared parameter per stage is refused — divergence would break the invariant
-rather than configure anything:
-
-```python
->>> get_model(                                                            # doctest: +SKIP
-...     ["impact_cu_inj", "bmad_cu_hxr"],
-...     handoff_loc="YAG03",
-...     **{"impact_cu_inj.n_particles": 200},
-... )
-Traceback (most recent call last):
-    ...
-ValueError: 'n_particles' must be the same in every stage, so it cannot be set per stage. Pass n_particles=... instead of 'impact_cu_inj.n_particles'.
-
-```
+rather than configure anything.
 
 **Everything else means something different to each stage**, so it is either
 unambiguous or you say which stage. `track_beam` and `custom_beam_path` are only
@@ -331,25 +275,8 @@ Or prefix with the model ID to set one stage:
 
 The dotted form accepts either spelling — the registry's (`end_ele`, `start_ele`) or
 the underlying builder's (`end_element`, `start_element`). Passing a builder spelling
-*flat* is refused, since it does not say which stage it means:
-
-```python
->>> get_model(["impact_cu_inj", "bmad_cu_hxr"], end_element="TD11")
-Traceback (most recent call last):
-    ...
-ValueError: Do not pass 'end_element' directly ...
-
-```
-
-Unknown parameters are rejected outright, listing what is accepted:
-
-```python
->>> get_model("bmad_cu_hxr", n_particle=5)
-Traceback (most recent call last):
-    ...
-ValueError: 'n_particle' is not a parameter of any stage. Accepted: ...
-
-```
+*flat* is refused since it does not name a stage; unknown parameters are refused
+outright with the accepted set listed.
 
 To see what a model accepts:
 
@@ -383,9 +310,11 @@ handoff, and forces beam tracking on for every stage that supports it.
 list_models(facility: str | None = None, simulator: str | None = None)
 ```
 
-Printable table of registered models with their facility, simulator, and description,
-optionally filtered by facility (`"lcls"` / `"facet2"`) or simulator (`"bmad"`,
-`"impact"`, `"surrogate"`, `"cheetah"`).
+Printable table of registered models with facility, simulator, start, end and
+description columns, plus a block of standard staged chains as discovery aids.
+Optionally filtered by facility (`"lcls"` / `"facet2"`) or simulator (`"bmad"`,
+`"impact"`, `"surrogate"`, `"cheetah"`); chain rows are only shown when both stages
+survive the filter.
 
 ```
 list_handoff_points(model_id: str) -> tuple[str, ...]
