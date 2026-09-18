@@ -37,6 +37,7 @@ _SIMULATOR_LABELS = {
     "impact": "IMPACT",
     "surrogate": "Surrogate",
     "cheetah": "Cheetah",
+    "zfel": "ZFEL",
 }
 
 

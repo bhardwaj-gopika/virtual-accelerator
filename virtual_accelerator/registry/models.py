@@ -62,7 +62,7 @@ class ModelEntry:
     builder: str
     extras: tuple[str, ...]
     params: dict[str, Any]
-    handoff_points: tuple[str, ...]
+    handoff_points: tuple[str, ...] = ()
     start_param: str | None = None
     end_param: str | None = None
     default_start: str | None = None
@@ -160,6 +160,17 @@ MODELS: dict[str, ModelEntry] = {
         default_start="CATHODE",
         default_end="END",
         shared_params=frozenset({"n_particles"}),
+    ),
+    # 1D ZFEL: a dedicated model rather than a selectable beamline segment, so no
+    # start_element / end_element / handoff_points.
+    "zfel_cu_hxr": ModelEntry(
+        name="zfel_cu_hxr",
+        description="ZFEL model for LCLS CU-HXR",
+        facility="lcls",
+        simulator="zfel",
+        builder="virtual_accelerator.models.cu_hxr_zfel:get_cu_hxr_zfel_model",
+        extras=("zfel",),
+        params={},
     ),
     "impact_f2e_inj": ModelEntry(
         name="impact_f2e_inj",

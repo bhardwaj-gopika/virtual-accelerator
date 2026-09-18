@@ -40,6 +40,7 @@ Supported models (see `docs/model_registry_usage.md` for the full API):
 | `bmad_cu_hxr` | LCLS | Bmad | OTR2 | END | `bmad` |
 | `surrogate_cu_inj` | LCLS | Surrogate | CATHODE | OTR2 | `surrogate` |
 | `cheetah_cu_hxr` | LCLS | Cheetah | CATHODE | END | `cheetah` |
+| `zfel_cu_hxr` | LCLS | ZFEL | — | — | `zfel` |
 | `impact_f2e_inj` | Facet2 | IMPACT | CATHODEF | PR10241 | `impact` |
 | `surrogate_f2e_inj` | Facet2 | Surrogate | CATHODEF | PR10241 | `surrogate` |
 | `bmad_f2_elec` | Facet2 | Bmad | CATHODEF | END | `bmad` |

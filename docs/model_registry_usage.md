@@ -46,6 +46,7 @@ Print all registered models as a table:
 | bmad_cu_hxr              | LCLS     | Bmad           | OTR2     | END     | LCLS CU-HXR linac                 |
 | surrogate_cu_inj         | LCLS     | Surrogate      | CATHODE  | OTR2    | LCLS CU injector (NN surrogate)   |
 | cheetah_cu_hxr           | LCLS     | Cheetah        | CATHODE  | END     | LCLS CU-HXR full beamline         |
+| zfel_cu_hxr              | LCLS     | ZFEL           | -        | -       | ZFEL model for LCLS CU-HXR        |
 | impact_f2e_inj           | Facet2   | IMPACT         | CATHODEF | PR10241 | FACET-II injector                 |
 | surrogate_f2e_inj        | Facet2   | Surrogate      | CATHODEF | PR10241 | FACET-II injector (NN surrogate)  |
 | bmad_f2_elec             | Facet2   | Bmad           | CATHODEF | END     | FACET-II e- linac                 |
