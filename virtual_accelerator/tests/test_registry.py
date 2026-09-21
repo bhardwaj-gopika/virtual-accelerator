@@ -5,9 +5,12 @@ import pytest
 from lume.actions import WritableActionMixin
 
 from virtual_accelerator.registry import (
+    _CHAIN_ALIASES,
     _normalize,
     _resolve_handoffs,
-    _route_kwargs,
+    _resolve_spec,
+    _route_chain_kwargs,
+    _route_single_kwargs,
     _strip_overlapping_variables,
     common_handoff_points,
     get_model,
@@ -28,8 +31,10 @@ class TestDiscovery:
         assert "facility" in text and "simulator" in text
         assert "start" in text and "end" in text
         assert "IMPACT" in text and "Bmad" in text and "Facet2" in text
-        # A staged-chain row is rendered when both stages pass the filter.
-        assert "impact_cu_inj -> bmad_cu_hxr" in text
+        # A staged-chain row is rendered when both stages pass the filter, with
+        # the inferred handoff spelled out so users can see which plane
+        # get_model will pick when handoff_loc is not passed.
+        assert "impact_cu_inj -> bmad_cu_hxr (handoff YAG03)" in text
         # Endpoints appear as their own columns rather than in the description.
         assert "CATHODE" in text and "YAG03" in text
 
@@ -143,55 +148,135 @@ class TestValidation:
             get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="OTR4")
 
 
-class TestKwargRouting:
+class TestSingleModelKwargs:
     def test_unknown_kwarg_rejected(self):
-        with pytest.raises(ValueError, match="not a parameter of any stage"):
-            _route_kwargs([MODELS["bmad_cu_hxr"]], {"n_particle": 5})
+        with pytest.raises(ValueError, match="not a parameter of"):
+            _route_single_kwargs(MODELS["bmad_cu_hxr"], {"n_particle": 5})
 
-    def test_shared_param_reaches_every_declaring_stage(self):
+    def test_known_kwarg_passes_through(self):
+        routed = _route_single_kwargs(MODELS["bmad_cu_hxr"], {"track_beam": True})
+        assert routed == {"track_beam": True}
+
+    def test_stage_kwargs_rejected_for_single_model(self):
+        with pytest.raises(ValueError, match="only meaningful for a chain"):
+            get_model("bmad_cu_hxr", stage_kwargs={"bmad_cu_hxr": {"track_beam": True}})
+
+
+class TestChainKwargs:
+    """New nested-dict kwarg contract.
+
+    Top-level kwargs are for shared params only (they broadcast to every stage
+    that declares them). Stage-specific params go through ``stage_kwargs``,
+    keyed by stage name.
+    """
+
+    def test_shared_param_broadcasts_to_every_declaring_stage(self):
         entries = [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]]
-        routed = _route_kwargs(entries, {"n_particles": 42})
+        routed = _route_chain_kwargs(entries, None, {"n_particles": 42})
         assert routed == [{"n_particles": 42}, {"n_particles": 42}]
 
-    def test_routes_to_single_declaring_stage(self):
+    def test_shared_param_skips_non_declaring_stage(self):
+        # bmad_cu_hxr does not declare n_particles, so it is not sent there.
         entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
-        routed = _route_kwargs(entries, {"track_beam": True})
+        routed = _route_chain_kwargs(entries, None, {"n_particles": 42})
+        assert routed == [{"n_particles": 42}, {}]
+
+    def test_stage_kwargs_targets_one_stage(self):
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
+        routed = _route_chain_kwargs(entries, {"bmad_cu_hxr": {"track_beam": True}}, {})
         assert routed == [{}, {"track_beam": True}]
 
-    def test_dotted_form_targets_one_stage(self):
-        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
-        routed = _route_kwargs(entries, {"bmad_cu_hxr.track_beam": True})
-        assert routed == [{}, {"track_beam": True}]
-
-    def test_dotted_form_rejects_unknown_stage(self):
-        with pytest.raises(ValueError, match="not in this model"):
-            _route_kwargs([MODELS["bmad_cu_hxr"]], {"nope.track_beam": True})
-
-    def test_shared_param_cannot_be_set_per_stage(self):
-        # n_particles must match across stages -- the beam flows through them.
-        with pytest.raises(ValueError, match="same in every stage"):
-            _route_kwargs(
-                [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]],
-                {"cheetah_cu_hxr.n_particles": 7},
-            )
-
-    @pytest.mark.parametrize("key", ["end_element", "start_element"])
-    def test_flat_builder_spelling_is_rejected(self, key):
-        with pytest.raises(ValueError, match="does not say which stage"):
-            _route_kwargs(
-                [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]], {key: "TD11"}
-            )
-
-    def test_dotted_form_accepts_end_ele_per_stage(self):
+    def test_stage_kwargs_accepts_end_ele_alias(self):
         entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
-        routed = _route_kwargs(
-            entries, {"impact_cu_inj.end_ele": "YAG02", "bmad_cu_hxr.end_ele": "TD11"}
+        routed = _route_chain_kwargs(
+            entries,
+            {
+                "impact_cu_inj": {"end_ele": "YAG02"},
+                "bmad_cu_hxr": {"end_ele": "TD11"},
+            },
+            {},
         )
         assert routed == [{"end_element": "YAG02"}, {"end_element": "TD11"}]
 
-    def test_dotted_form_rejects_unknown_param(self):
+    def test_stage_specific_at_top_level_is_rejected(self):
+        # track_beam is bmad-only. Flat use in a chain does not name a stage.
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
+        with pytest.raises(ValueError, match="stage-specific"):
+            _route_chain_kwargs(entries, None, {"track_beam": True})
+
+    def test_stage_specific_error_names_a_valid_stage(self):
+        # The error should point the user at the stage_kwargs form.
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
+        with pytest.raises(ValueError, match="bmad_cu_hxr"):
+            _route_chain_kwargs(entries, None, {"custom_beam_path": "x.h5"})
+
+    def test_unknown_kwarg_at_top_level_is_rejected(self):
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        with pytest.raises(ValueError, match="stage-specific"):
+            _route_chain_kwargs(entries, None, {"n_particle": 5})
+
+    def test_stage_kwargs_rejects_shared_param(self):
+        # n_particles is shared: divergence between stages would break the
+        # physical invariant that the beam flows through them.
+        entries = [MODELS["surrogate_cu_inj"], MODELS["cheetah_cu_hxr"]]
+        with pytest.raises(ValueError, match="shared param"):
+            _route_chain_kwargs(entries, {"cheetah_cu_hxr": {"n_particles": 7}}, {})
+
+    def test_stage_kwargs_rejects_unknown_stage(self):
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        with pytest.raises(ValueError, match="not a stage of this model"):
+            _route_chain_kwargs(entries, {"nope": {"track_beam": True}}, {})
+
+    def test_stage_kwargs_rejects_unknown_param(self):
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
         with pytest.raises(ValueError, match="not a parameter of"):
-            _route_kwargs([MODELS["bmad_cu_hxr"]], {"bmad_cu_hxr.bogus": 1})
+            _route_chain_kwargs(entries, {"bmad_cu_hxr": {"bogus": 1}}, {})
+
+    def test_stage_kwargs_rejects_non_dict_value(self):
+        entries = [MODELS["impact_cu_inj"], MODELS["bmad_cu_hxr"]]
+        with pytest.raises(TypeError, match="must be a dict"):
+            _route_chain_kwargs(entries, {"bmad_cu_hxr": "not a dict"}, {})
+
+    def test_stage_kwargs_rejects_start_ele_on_fixed_extent(self):
+        # surrogate_cu_inj has no configurable extent -- start_ele/end_ele are
+        # meaningless there and should error rather than silently no-op.
+        entries = [MODELS["surrogate_cu_inj"], MODELS["bmad_cu_hxr"]]
+        with pytest.raises(ValueError, match="fixed"):
+            _route_chain_kwargs(
+                entries, {"surrogate_cu_inj": {"start_ele": "CATHODE"}}, {}
+            )
+
+
+class TestChainAliases:
+    def test_alias_resolves_to_stage_pair(self):
+        names, alias = _resolve_spec("high_fidelity_cu_hxr_s2e")
+        assert names == ["impact_cu_inj", "bmad_cu_hxr"]
+        assert alias == "high_fidelity_cu_hxr_s2e"
+
+    def test_every_alias_points_at_registered_stages(self):
+        for alias, (upstream, downstream) in _CHAIN_ALIASES.items():
+            assert upstream in MODELS, f"{alias} upstream {upstream!r} unregistered"
+            assert downstream in MODELS, (
+                f"{alias} downstream {downstream!r} unregistered"
+            )
+
+    def test_plain_name_returns_singleton_and_no_alias(self):
+        names, alias = _resolve_spec("bmad_cu_hxr")
+        assert names == ["bmad_cu_hxr"]
+        assert alias is None
+
+    def test_list_spec_is_returned_verbatim(self):
+        names, alias = _resolve_spec(["impact_cu_inj", "bmad_cu_hxr"])
+        assert names == ["impact_cu_inj", "bmad_cu_hxr"]
+        assert alias is None
+
+    def test_duplicate_stage_names_rejected(self):
+        with pytest.raises(ValueError, match="Duplicate stage"):
+            _resolve_spec(["bmad_cu_hxr", "bmad_cu_hxr"])
+
+    def test_list_of_one_still_rejected(self):
+        with pytest.raises(ValueError, match="at least two"):
+            _resolve_spec(["bmad_cu_hxr"])
 
 
 class TestHandoffResolution:

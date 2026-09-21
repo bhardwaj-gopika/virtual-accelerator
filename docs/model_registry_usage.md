@@ -39,25 +39,29 @@ Print all registered models as a table:
 
 ```python
 >>> print(list_models())
-+--------------------------+----------+----------------+----------+---------+-----------------------------------+
-| name                     | facility | simulator      | start    | end     | description                       |
-+--------------------------+----------+----------------+----------+---------+-----------------------------------+
-| impact_cu_inj            | LCLS     | IMPACT         | CATHODE  | YAG03   | LCLS CU injector                  |
-| bmad_cu_hxr              | LCLS     | Bmad           | OTR2     | END     | LCLS CU-HXR linac                 |
-| surrogate_cu_inj         | LCLS     | Surrogate      | CATHODE  | OTR2    | LCLS CU injector (NN surrogate)   |
-| cheetah_cu_hxr           | LCLS     | Cheetah        | CATHODE  | END     | LCLS CU-HXR full beamline         |
-| zfel_cu_hxr              | LCLS     | ZFEL           | -        | -       | ZFEL model for LCLS CU-HXR        |
-| impact_f2e_inj           | Facet2   | IMPACT         | CATHODEF | PR10241 | FACET-II injector                 |
-| surrogate_f2e_inj        | Facet2   | Surrogate      | CATHODEF | PR10241 | FACET-II injector (NN surrogate)  |
-| bmad_f2_elec             | Facet2   | Bmad           | CATHODEF | END     | FACET-II e- linac                 |
-+--------------------------+----------+----------------+----------+---------+-----------------------------------+
-| high_fidelity_cu_hxr_s2e | LCLS     | IMPACT+Bmad    | CATHODE  | END     | impact_cu_inj -> bmad_cu_hxr      |
-| fast_cu_hxr_s2e          | LCLS     | Surrogate+Bmad | CATHODE  | END     | surrogate_cu_inj -> bmad_cu_hxr   |
-| high_fidelity_facet2_s2e | Facet2   | IMPACT+Bmad    | CATHODEF | END     | impact_f2e_inj -> bmad_f2_elec    |
-| fast_facet2_s2e          | Facet2   | Surrogate+Bmad | CATHODEF | END     | surrogate_f2e_inj -> bmad_f2_elec |
-+--------------------------+----------+----------------+----------+---------+-----------------------------------+
++--------------------------+----------+----------------+----------+---------+-----------------------------------------------------+
+| name                     | facility | simulator      | start    | end     | description                                         |
++--------------------------+----------+----------------+----------+---------+-----------------------------------------------------+
+| impact_cu_inj            | LCLS     | IMPACT         | CATHODE  | YAG03   | LCLS CU injector                                    |
+| bmad_cu_hxr              | LCLS     | Bmad           | OTR2     | END     | LCLS CU-HXR linac                                   |
+| surrogate_cu_inj         | LCLS     | Surrogate      | CATHODE  | OTR2    | LCLS CU injector (NN surrogate)                     |
+| cheetah_cu_hxr           | LCLS     | Cheetah        | CATHODE  | END     | LCLS CU-HXR full beamline                           |
+| zfel_cu_hxr              | LCLS     | ZFEL           | -        | -       | ZFEL model for LCLS CU-HXR                          |
+| impact_f2e_inj           | Facet2   | IMPACT         | CATHODEF | PR10241 | FACET-II injector                                   |
+| surrogate_f2e_inj        | Facet2   | Surrogate      | CATHODEF | PR10241 | FACET-II injector (NN surrogate)                    |
+| bmad_f2_elec             | Facet2   | Bmad           | CATHODEF | END     | FACET-II e- linac                                   |
++--------------------------+----------+----------------+----------+---------+-----------------------------------------------------+
+| high_fidelity_cu_hxr_s2e | LCLS     | IMPACT+Bmad    | CATHODE  | END     | impact_cu_inj -> bmad_cu_hxr (handoff YAG03)        |
+| fast_cu_hxr_s2e          | LCLS     | Surrogate+Bmad | CATHODE  | END     | surrogate_cu_inj -> bmad_cu_hxr (handoff OTR2)      |
+| high_fidelity_facet2_s2e | Facet2   | IMPACT+Bmad    | CATHODEF | END     | impact_f2e_inj -> bmad_f2_elec (handoff PR10241)    |
+| fast_facet2_s2e          | Facet2   | Surrogate+Bmad | CATHODEF | END     | surrogate_f2e_inj -> bmad_f2_elec (handoff PR10241) |
++--------------------------+----------+----------------+----------+---------+-----------------------------------------------------+
 
 ```
+
+The chain rows below the separator are **aliases**: `get_model("high_fidelity_cu_hxr_s2e")`
+builds the pair `impact_cu_inj -> bmad_cu_hxr` for you, using the handoff shown in
+the description. Pass the pair as a list if you want to spell it out.
 
 Filter by facility or simulator:
 
@@ -231,53 +235,74 @@ handoff element if you see it.
 
 ### Targeting One Stage With kwargs
 
-Parameters fall into two kinds, and which one it is decides how you pass it.
+Parameters fall into two kinds, and which one it is decides where you pass it.
 
 **Shared parameters must hold the same value in every stage.** `n_particles` is the
 only one: the beam flows through the stages, so a particle count that differs between
-them is physically meaningless. Pass it flat and it reaches every stage that declares
-one.
+them is physically meaningless. Pass it at the top level and it broadcasts to every
+stage that declares one.
 
 ```python
 >>> m = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=1000)   # doctest: +SKIP
 
 ```
 
-Setting a shared parameter per stage is refused — divergence would break the invariant
-rather than configure anything.
+Setting a shared parameter per stage is refused — divergence would break the
+invariant rather than configure anything.
 
-**Everything else means something different to each stage**, so it is either
-unambiguous or you say which stage. `track_beam` and `custom_beam_path` are only
-declared by `bmad_cu_hxr`, so they route there on their own:
+**Stage-specific parameters go through `stage_kwargs`**, a dict keyed by stage name
+whose values are that stage's parameter overrides. `track_beam` and
+`custom_beam_path` are declared by `bmad_cu_hxr`, so they belong under its entry:
 
 ```python
->>> m = get_model(["surrogate_cu_inj", "bmad_cu_hxr"], custom_beam_path="beam.h5")   # doctest: +SKIP
+>>> m = get_model(                                                        # doctest: +SKIP
+...     ["surrogate_cu_inj", "bmad_cu_hxr"],
+...     stage_kwargs={"bmad_cu_hxr": {"custom_beam_path": "beam.h5"}},
+... )
 
 ```
 
-Start and end elements need naming, because both stages have them. Use `start_ele` /
-`end_ele` for the overall extent — first and last stage respectively:
+Passing `custom_beam_path=` at the top level of a chain call is refused, because it
+does not say which stage it applies to. The error names the valid `stage_kwargs`
+form.
+
+Start and end elements are role-based: use `start_ele` / `end_ele` for the overall
+extent — the first and last stage respectively:
 
 ```python
 >>> m = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", end_ele="TD11")   # doctest: +SKIP
 
 ```
 
-Or prefix with the model ID to set one stage:
+Or set them per stage inside `stage_kwargs` — `end_ele` there means the same thing
+as the builder's `end_element`:
 
 ```python
 >>> m = get_model(                                                        # doctest: +SKIP
 ...     ["impact_cu_inj", "bmad_cu_hxr"],
 ...     handoff_loc="YAG03",
-...     **{"bmad_cu_hxr.end_ele": "TD11"},
+...     stage_kwargs={"bmad_cu_hxr": {"end_ele": "TD11"}},
 ... )
 
 ```
 
-The dotted form accepts either spelling — the registry's (`end_ele`, `start_ele`) or
-the underlying builder's (`end_element`, `start_element`). Passing a builder spelling
-*flat* is refused since it does not name a stage; unknown parameters are refused
-outright with the accepted set listed.
+**Chain aliases** are the same shape — pass an alias instead of a list, and
+`stage_kwargs` keys are the stage names the alias resolves to (see `list_models()`):
+
+```python
+>>> m = get_model(                                                        # doctest: +SKIP
+...     "high_fidelity_cu_hxr_s2e",
+...     n_particles=1000,
+...     stage_kwargs={"bmad_cu_hxr": {"custom_beam_path": "beam.h5"}},
+... )
+
+```
+
+Precedence when both homes touch the same key (rare): the `stage_kwargs` value
+wins over the top-level broadcast, which wins over the builder default. In
+normal use the two homes are disjoint — shared params are rejected inside
+`stage_kwargs` and stage-specific params are rejected at the top level, so
+every parameter has exactly one legal home.
 
 To see what a model accepts:
 
@@ -293,16 +318,18 @@ frozenset({'n_particles'})
 ## API Reference
 
 ```
-get_model(spec, *, handoff_loc=None, start_ele=None, end_ele=None, **kwargs)
+get_model(spec, *, handoff_loc=None, start_ele=None, end_ele=None,
+          stage_kwargs=None, **kwargs)
 ```
 
 | Parameter | Type | Description |
 |---|---|---|
-| `spec` | str or list[str] | Model ID, or `[upstream, downstream]` to chain |
+| `spec` | str or list[str] | Model ID, chain alias (`high_fidelity_cu_hxr_s2e` etc.), or `[upstream, downstream]` to chain. Duplicate names in a list are rejected |
 | `handoff_loc` | str | Where the stages exchange beam. Inferred from the upstream model's standard end when omitted. Must be in `common_handoff_points()` |
 | `start_ele` | str | Element to start tracking from (first stage) |
 | `end_ele` | str | Element to stop tracking at (last stage) |
-| `**kwargs` | any | Builder parameters. Prefix with `"<model_id>."` to target one stage |
+| `stage_kwargs` | dict[str, dict] | Per-stage overrides for a chain, keyed by stage name. Values are `{param: value}` dicts. Not accepted for single-model calls |
+| `**kwargs` | any | Single-model call: any builder parameter. Chain call: shared parameters only (broadcast to every stage declaring them) |
 
 For staged chains `get_model()` also removes variables that both stages publish at the
 handoff, and forces beam tracking on for every stage that supports it.

@@ -5,6 +5,7 @@ from virtual_accelerator.registry import get_model, list_models
 print(list_models())
 model = get_model("bmad_cu_hxr", end_ele="OTR4", track_beam=True)
 model = get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03")
+model = get_model("high_fidelity_cu_hxr_s2e", n_particles=1000)
 """
 
 import importlib
@@ -41,16 +42,19 @@ _SIMULATOR_LABELS = {
 }
 
 
-# Standard staged chains -- discovery aids only, not registry entries. Each row is
-# (alias, upstream, downstream); alias is a short handle that identifies the chain
-# (e.g. high_fidelity_cu_hxr_s2e) so users can refer to it without spelling out
-# both stages every time.
+# Standard staged chains, each addressable by its alias in `get_model`. A row is
+# (alias, upstream, downstream); the alias resolves to the stage pair so
+# `get_model("high_fidelity_cu_hxr_s2e")` behaves like passing the pair as a list.
 _STANDARD_CHAINS: tuple[tuple[str, str, str], ...] = (
     ("high_fidelity_cu_hxr_s2e", "impact_cu_inj", "bmad_cu_hxr"),
     ("fast_cu_hxr_s2e", "surrogate_cu_inj", "bmad_cu_hxr"),
     ("high_fidelity_facet2_s2e", "impact_f2e_inj", "bmad_f2_elec"),
     ("fast_facet2_s2e", "surrogate_f2e_inj", "bmad_f2_elec"),
 )
+
+_CHAIN_ALIASES: dict[str, tuple[str, str]] = {
+    alias: (upstream, downstream) for alias, upstream, downstream in _STANDARD_CHAINS
+}
 
 
 class _ModelCatalog(dict):
@@ -82,13 +86,17 @@ class _ModelCatalog(dict):
                 for e in (upstream, downstream)
             )
         )
+        # Handoff plane comes from the upstream stage's default end -- that is what
+        # get_model will pick when handoff_loc is not passed, so it is the honest
+        # default to advertise here.
+        handoff = upstream.default_end or "?"
         return (
             alias,
             _FACILITY_LABELS.get(upstream.facility, upstream.facility),
             simulator,
             upstream.default_start or "-",
             downstream.default_end or "-",
-            f"{upstream.name} -> {downstream.name}",
+            f"{upstream.name} -> {downstream.name} (handoff {handoff})",
         )
 
     def __repr__(self) -> str:
@@ -281,81 +289,179 @@ def _check_element(entry: ModelEntry, name: str, role: str) -> None:
         )
 
 
-def _route_kwargs(
-    entries: list[ModelEntry], kwargs: dict[str, Any]
-) -> list[dict[str, Any]]:
-    """Distribute flat kwargs across stages using the registry's declared params.
+def _resolve_spec(spec: str | list[str]) -> tuple[list[str], str | None]:
+    """Resolve ``spec`` into an ordered list of stage names.
 
-    Routing is a table lookup, not signature introspection, so the error
-    messages can name the candidate stages.
+    Parameters
+    ----------
+    spec : str or list[str]
+        A registry name, a chain alias, or an ordered list of stage names.
+
+    Returns
+    -------
+    names : list[str]
+        Length 1 for a single model, >= 2 for a chain.
+    alias : str or None
+        The chain alias if ``spec`` was one, else None. Only used for error
+        messages so the user sees the name they typed.
+
+    Raises
+    ------
+    ValueError
+        If a list spec is shorter than two entries, or has a duplicate name.
     """
-    routed: list[dict[str, Any]] = [{} for _ in entries]
+    if isinstance(spec, str):
+        if spec in _CHAIN_ALIASES:
+            return list(_CHAIN_ALIASES[spec]), spec
+        return [spec], None
+
+    names = list(spec)
+    if len(names) < 2:
+        raise ValueError("Staging requires at least two models.")
+
+    seen: set[str] = set()
+    for name in names:
+        # A duplicate name would make stage_kwargs keys ambiguous ("which of the
+        # two bmad_cu_hxr stages is this dict for?"), and legitimate use cases
+        # for repeating a stage are hard to construct -- the two instances would
+        # be identically configured and produce identical outputs.
+        if name in seen:
+            raise ValueError(
+                f"Duplicate stage {name!r}: each stage name may appear at most "
+                "once in a chain so stage_kwargs keys stay unambiguous."
+            )
+        seen.add(name)
+
+    return names, None
+
+
+def _route_chain_kwargs(
+    entries: list[ModelEntry],
+    stage_kwargs: dict[str, dict[str, Any]] | None,
+    broadcast_kwargs: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Distribute chain kwargs across stages.
+
+    Top-level (``broadcast_kwargs``) is for shared params only -- ``n_particles``
+    is the canonical example. Anything else must go through ``stage_kwargs``,
+    keyed by stage name, because the caller is the only one who can say which
+    stage a stage-specific param applies to.
+
+    Precedence (highest wins):
+      1. ``stage_kwargs[stage][param]`` -- explicit per stage
+      2. top-level ``param=`` -- broadcast to every stage declaring it
+      3. builder default -- the registry does not send the key at all
+
+    In practice (1) and (2) never touch the same param, because shared params
+    are rejected inside ``stage_kwargs`` and stage-specific params are rejected
+    at the top level. Every param has exactly one legal home; the precedence
+    order is stated for the general case and to match user intuition when a
+    future change makes the two homes overlap.
+    """
+    stage_kwargs = dict(stage_kwargs or {})
     by_name = {entry.name: i for i, entry in enumerate(entries)}
 
-    # Builder spellings of the extent params. Flat use is rejected: which stage a
-    # bare "end_element" means is ambiguous, and start_ele/end_ele already say it.
-    extent_params = {
-        param
-        for entry in entries
-        for param in (entry.start_param, entry.end_param)
-        if param is not None
-    }
+    # Superset of "shared" across every stage in the chain. A param is shared
+    # iff at least one stage that declares it lists it as shared -- the flag
+    # says "this cannot diverge between stages", so any stage marking it
+    # constrains the chain as a whole.
+    all_shared = {p for entry in entries for p in entry.shared_params}
 
-    for key, value in kwargs.items():
-        stage_name, sep, param = key.partition(".")
-        if sep:
-            if stage_name not in by_name:
-                raise ValueError(
-                    f"{key!r} targets stage {stage_name!r}, which is not in this model. "
-                    f"Stages: {', '.join(by_name)}"
-                )
-            index = by_name[stage_name]
-            # Accept the get_model spelling per stage, e.g. "bmad_cu_hxr.end_ele".
-            param = {
-                "start_ele": entries[index].start_param,
-                "end_ele": entries[index].end_param,
-            }.get(param, param)
-            if param in entries[index].shared_params:
-                raise ValueError(
-                    f"{param!r} must be the same in every stage, so it cannot be set "
-                    f"per stage. Pass {param}=... instead of {key!r}."
-                )
-            if param not in entries[index].params:
-                raise ValueError(
-                    f"{param!r} is not a parameter of {stage_name!r}. "
-                    f"Accepted: {', '.join(sorted(entries[index].params))}"
-                )
-            routed[index][param] = value
+    # (A) Top-level kwargs must be shared params.
+    for key in broadcast_kwargs:
+        if key in all_shared:
             continue
+        accepting = [e.name for e in entries if key in e.params]
+        if accepting:
+            hint = (
+                f' Try stage_kwargs={{"{accepting[0]}": {{"{key}": ...}}}}'
+                f" to target one stage."
+            )
+        else:
+            known = sorted({p for e in entries for p in e.params} | all_shared)
+            hint = f" Accepted params: {', '.join(known)}."
+        raise ValueError(
+            f"{key!r} is stage-specific and cannot be passed at the top level "
+            f"for a chain -- it does not say which stage it applies to.{hint}"
+        )
 
-        if key in extent_params:
-            role = (
-                "start_ele" if any(e.start_param == key for e in entries) else "end_ele"
-            )
+    # (B) stage_kwargs shape and stage names.
+    for stage_name, params in stage_kwargs.items():
+        if stage_name not in by_name:
             raise ValueError(
-                f"Do not pass {key!r} directly -- it is the builder's own name and does "
-                f"not say which stage it applies to. Use {role}=... for the overall "
-                f'extent, or "<model_name>.{key}=..." to target one stage.'
+                f"{stage_name!r} in stage_kwargs is not a stage of this model. "
+                f"Stages: {', '.join(by_name)}."
+            )
+        if not isinstance(params, dict):
+            raise TypeError(
+                f"stage_kwargs[{stage_name!r}] must be a dict of param -> value, "
+                f"got {type(params).__name__}."
             )
 
-        accepting = [i for i, entry in enumerate(entries) if key in entry.params]
-        if not accepting:
-            known = sorted({p for entry in entries for p in entry.params})
-            raise ValueError(
-                f"{key!r} is not a parameter of any stage. Accepted: {', '.join(known)}"
-            )
+    # (C) Assemble per-stage kwargs.
+    routed: list[dict[str, Any]] = []
+    for entry in entries:
+        stage: dict[str, Any] = {}
 
-        shared = any(key in entries[i].shared_params for i in accepting)
-        if len(accepting) > 1 and not shared:
-            names = ", ".join(entries[i].name for i in accepting)
-            raise ValueError(
-                f"{key!r} is ambiguous across stages ({names}). "
-                f'Qualify it, e.g. "{entries[accepting[0]].name}.{key}=...".'
-            )
-        for i in accepting:
-            routed[i][key] = value
+        # Broadcast layer: every shared param a stage declares receives the
+        # top-level value. Non-declaring stages skip it silently -- e.g.
+        # bmad_cu_hxr does not declare n_particles because Bmad tracks each
+        # particle individually rather than sampling a count.
+        for key, value in broadcast_kwargs.items():
+            if key in entry.params:
+                stage[key] = value
+
+        # Per-stage layer: overrides win over broadcast for the same key.
+        per_stage = stage_kwargs.get(entry.name, {})
+        for key, value in per_stage.items():
+            # Accept the get_model spelling per stage, e.g. "end_ele" for a bmad
+            # stage's "end_element". The dict form makes the mapping natural --
+            # the stage name is already explicit, only the param needs aliasing.
+            builder_key = {
+                "start_ele": entry.start_param,
+                "end_ele": entry.end_param,
+            }.get(key, key)
+
+            if builder_key is None:
+                raise ValueError(
+                    f"{entry.name!r} has no configurable {key!r} -- its extent "
+                    "is fixed."
+                )
+            if builder_key in all_shared:
+                raise ValueError(
+                    f"{builder_key!r} is a shared param and cannot be set per "
+                    "stage (the beam flows through the stages, so divergent "
+                    f"values are physically invalid). Pass {builder_key}=... "
+                    "at the top level."
+                )
+            if builder_key not in entry.params:
+                accepted = sorted(entry.params)
+                raise ValueError(
+                    f"{key!r} is not a parameter of {entry.name!r}. "
+                    f"Accepted: {', '.join(accepted)}."
+                )
+            stage[builder_key] = value
+
+        routed.append(stage)
 
     return routed
+
+
+def _route_single_kwargs(entry: ModelEntry, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Validate kwargs for a single-model call.
+
+    No routing to do -- there is one stage. This just rejects unknown params so
+    a typo like ``n_particle`` surfaces here rather than as a TypeError from the
+    builder several imports later.
+    """
+    for key in kwargs:
+        if key not in entry.params:
+            accepted = sorted(entry.params)
+            raise ValueError(
+                f"{key!r} is not a parameter of {entry.name!r}. "
+                f"Accepted: {', '.join(accepted)}."
+            )
+    return dict(kwargs)
 
 
 def _build(
@@ -554,6 +660,7 @@ def get_model(
     handoff_loc: str | list[str] | None = None,
     start_ele: str | None = None,
     end_ele: str | None = None,
+    stage_kwargs: dict[str, dict[str, Any]] | None = None,
     **kwargs: Any,
 ):
     """
@@ -562,13 +669,15 @@ def get_model(
     Parameters
     ----------
     spec : str or list[str]
-        A registry name, or an ordered list of names to stage together, upstream
-        first.
+        A registry name, a chain alias (e.g. ``"high_fidelity_cu_hxr_s2e"``), or
+        an ordered list of registry names to stage together, upstream first.
+        Duplicate names in a list are rejected -- each stage must appear at most
+        once so ``stage_kwargs`` keys stay unambiguous.
     handoff_loc : str or list[str], optional
-        Element where each consecutive pair hands the beam over. Must be a shared
-        handoff point of both stages, see ``common_handoff_points``. A list is
-        required for more than two stages. Default is None, meaning it is inferred
-        from the upstream stage's standard end.
+        Element where each consecutive pair hands the beam over. Must be a
+        shared handoff point of both stages, see ``common_handoff_points``. A
+        list is required for more than two stages. Default is None, meaning it
+        is inferred from the upstream stage's standard end.
     start_ele : str, optional
         Element to start tracking from. For a staged model this applies to the
         first stage. Default is None, meaning the model's own default.
@@ -576,11 +685,14 @@ def get_model(
         Element to stop tracking at. For a staged model this applies to the last
         stage; interior extents come from ``handoff_loc``. Default is None,
         meaning the model's own default.
+    stage_kwargs : dict[str, dict], optional
+        Per-stage parameter overrides for a chain, keyed by stage name. Values
+        are dicts of ``{param: value}`` for that stage's builder. Not accepted
+        for single-model calls -- pass params as keyword arguments there.
     **kwargs
-        Builder parameters. Params listed in a model's ``shared_params`` are sent
-        to every stage declaring them and cannot be set per stage. Others are
-        routed to the single stage declaring them, or qualified as
-        ``"<model_name>.<param>"`` when more than one does.
+        For a single model: any builder parameter. For a chain: shared
+        parameters only (broadcast to every stage that declares them).
+        Stage-specific parameters must go through ``stage_kwargs``.
 
     Returns
     -------
@@ -592,41 +704,43 @@ def get_model(
     KeyError
         If a name in ``spec`` is not registered.
     ValueError
-        If the stages cannot be chained, the handoff is not shared by both, or a
-        kwarg cannot be routed unambiguously.
+        If the stages cannot be chained, the handoff is not shared by both, a
+        stage_kwargs key does not name a stage, a top-level kwarg is
+        stage-specific in a chain, or a stage_kwargs entry names a shared param.
 
     Notes
     -----
-    For staged chains this handles two things that are easy to get wrong by hand.
+    Precedence for a chain: ``stage_kwargs[stage][param]`` beats a top-level
+    broadcast, which beats the builder default. In practice the two homes never
+    touch the same param, because shared params are rejected inside
+    ``stage_kwargs`` and stage-specific params are rejected at the top level.
 
-    Duplicate variables at the handoff are removed automatically. Both stages
-    include the handoff element, so both publish its PVs -- an IMPACT model stopped
-    at YAG03 keeps the screen, since it prunes to ``s <= stop``, and so does a Bmad
-    model sliced from YAG03. ``StagedModel`` would reject the pair as duplicates.
-    The upstream stage owns them, because it is the stage that tracks the beam to
-    that plane, so they are unregistered from the downstream stage before the chain
-    is assembled.
-
-    Beam tracking is forced on for every stage that supports it, since a non-final
-    stage must produce ``final_particles`` and a non-first stage must accept
-    ``initial_particles``.
+    For staged chains this handles two things that are easy to get wrong by
+    hand.  Duplicate variables at the handoff are removed automatically: both
+    stages include the handoff element, so both publish its PVs, and the
+    upstream stage owns them because it is the stage that tracks the beam to
+    that plane. Beam tracking is forced on for every stage that supports it,
+    since a non-final stage must produce ``final_particles`` and a non-first
+    stage must accept ``initial_particles``.
 
     See ``docs/model_registry_usage.md`` for worked examples.
     """
     start_ele, end_ele = _normalize(start_ele), _normalize(end_ele)
+    names, _alias = _resolve_spec(spec)
 
-    if isinstance(spec, str):
-        entry = _entry(spec)
-        (routed,) = _route_kwargs([entry], kwargs)
+    if len(names) == 1:
+        if stage_kwargs:
+            raise ValueError(
+                "stage_kwargs is only meaningful for a chain -- for a single "
+                "model, pass parameters directly as keyword arguments."
+            )
+        entry = _entry(names[0])
+        routed = _route_single_kwargs(entry, kwargs)
         return _build(entry, routed, start_ele, end_ele)
 
-    names = list(spec)
-    if len(names) < 2:
-        raise ValueError("Staging requires at least two models.")
-
     entries = [_entry(name) for name in names]
+    routed = _route_chain_kwargs(entries, stage_kwargs, kwargs)
     handoffs = [_normalize(h) for h in _resolve_handoffs(entries, handoff_loc)]
-    routed = _route_kwargs(entries, kwargs)
 
     for upstream, downstream, handoff in zip(entries, entries[1:], handoffs):
         _validate_pair(upstream, downstream, handoff)
@@ -638,30 +752,32 @@ def get_model(
             end_ele if i == len(entries) - 1 else _exclusive_end(entry, handoffs[i])
         )
 
-        stage_kwargs = dict(routed[i])
+        stage_kw = dict(routed[i])
         # Every stage needs tracking on: a non-final stage has to produce
         # final_particles, and a non-first stage has to accept initial_particles
         # (lume_bmad rejects those unless track_type is 'beam').
         if "track_beam" in entry.params:
-            stage_kwargs["track_beam"] = True
+            stage_kw["track_beam"] = True
 
-        # An upstream stage stops at the handoff plane without keeping the element,
-        # so the downstream stage owns it. Bmad does this via the "-1" offset in
-        # _exclusive_end; IMPACT needs the flag because its prune is inclusive.
+        # An upstream stage stops at the handoff plane without keeping the
+        # element, so the downstream stage owns it. Bmad does this via the "-1"
+        # offset in _exclusive_end; IMPACT needs the flag because its prune is
+        # inclusive.
         if i < len(entries) - 1 and "include_end_element" in entry.params:
-            stage_kwargs["include_end_element"] = False
+            stage_kw["include_end_element"] = False
 
         stages.append(
             _build(
                 entry,
-                stage_kwargs,
+                stage_kw,
                 stage_start if entry.start_param else None,
                 stage_end if entry.end_param else None,
             )
         )
 
-    # Both stages include the handoff element and so publish its PVs. Resolve the
-    # duplicates before StagedModel validation, which would otherwise reject them.
+    # Both stages include the handoff element and so publish its PVs. Resolve
+    # the duplicates before StagedModel validation, which would otherwise reject
+    # them.
     for i in range(1, len(stages)):
         _strip_overlapping_variables(
             stages[i - 1], stages[i], entries[i - 1].name, entries[i].name
