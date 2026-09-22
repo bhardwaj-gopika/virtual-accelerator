@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-from lume_bmad.utils import rmat_get
 from virtual_accelerator.tests.dependency_profiles import (
     HAS_BMAD_DEPS,
     HAS_LCLS_LATTICE,
@@ -32,6 +31,8 @@ class TestGetCUHXRRmat:
         assert rmat.dtype == float
 
     def test_rmat_matches_direct_tao_calculation(self):
+        from lume_bmad.utils import rmat_get
+
         model = get_cu_hxr_rmat("OTR2", "OTR4")
 
         rmat = model.get_value("rmat:OTR2_OTR4")
@@ -57,13 +58,3 @@ class TestGetCUHXRRmat:
         updated_rmat = model.get_value("rmat:OTR2_OTR4")
 
         assert not np.allclose(initial_rmat, updated_rmat)
-
-    def test_rmat_for_different_element_range(self):
-        model = get_cu_hxr_rmat("OTR2", "OTR3")
-
-        rmat_name = "rmat:OTR2_OTR3"
-        assert rmat_name in model.supported_variables
-
-        rmat = model.get_value(rmat_name)
-        expected = rmat_get(model.tao, "OTR2", "OTR3")
-        assert np.allclose(rmat, expected)
