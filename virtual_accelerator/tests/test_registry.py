@@ -142,6 +142,12 @@ class TestValidation:
         with pytest.raises(ValueError, match="nothing is upstream"):
             get_model(["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="CATHODE")
 
+    def test_rejects_facet_cathode_as_handoff(self):
+        # CATHODEF is FACET's cathode spelling -- same "nothing upstream"
+        # invariant, different name.
+        with pytest.raises(ValueError, match="nothing is upstream"):
+            get_model(["impact_f2e_inj", "bmad_f2_elec"], handoff_loc="CATHODEF")
+
     def test_rejects_handoff_not_shared_by_both_stages(self):
         # OTR4 is past impact_cu_inj's stop at z=16.5, so it cannot hand off there.
         with pytest.raises(ValueError, match="not a shared handoff point"):
@@ -298,9 +304,13 @@ class TestCommonHandoffPoints:
         assert common_handoff_points("surrogate_cu_inj", "bmad_cu_hxr") == ("OTR2",)
 
     def test_cathode_is_always_excluded(self):
-        # bmad lists CATHODE, so the intersection must drop it explicitly.
+        # Both cathode spellings must be dropped, not just the LCLS one. FACET's
+        # cathode carries an "F" suffix (CATHODEF); missing it would let a chain
+        # hand off at the front of the machine, which has nothing upstream.
         assert "CATHODE" in MODELS["bmad_cu_hxr"].handoff_points
         assert "CATHODE" not in common_handoff_points("bmad_cu_hxr", "bmad_cu_hxr")
+        assert "CATHODEF" in MODELS["bmad_f2_elec"].handoff_points
+        assert "CATHODEF" not in common_handoff_points("bmad_f2_elec", "bmad_f2_elec")
 
     def test_is_intersection_not_union(self):
         # OTR4 is only reachable by bmad_cu_hxr; a union would wrongly include it.
@@ -399,24 +409,43 @@ class TestOverlapRemoval:
 class TestStagedOverlap:
     """End-to-end coverage of ``get_model``'s staging block.
 
-    Verifies the loop after ``_route_kwargs`` that assembles stages, forces beam
-    tracking on, applies the exclusive-end handoff, then hands consecutive stage
-    pairs to ``_strip_overlapping_variables`` before wrapping in ``StagedModel``.
+    Verifies the loop after ``_route_chain_kwargs`` that assembles stages, forces
+    beam tracking on, applies the exclusive-end handoff, then hands consecutive
+    stage pairs to ``_strip_overlapping_variables`` before wrapping in
+    ``StagedModel``.
     """
 
     @staticmethod
     def _install(monkeypatch, stages_by_name):
         """Patch registry internals so ``get_model`` builds without a simulator.
 
-        ``_build`` returns the prepared ``_FakeStage`` for the requested entry;
-        ``StagedModel`` is stubbed to a container that skips its own duplicate-
-        variable validation, so the assertions can focus on the registry's own
-        overlap handling rather than reproducing StagedModel's checks.
+        ``_build`` records its arguments in ``build_calls`` and returns the
+        prepared ``_FakeStage`` for the requested entry; ``StagedModel`` is
+        stubbed to a container that skips its own duplicate-variable
+        validation, so the assertions can focus on the registry's own overlap
+        handling and handoff wiring rather than reproducing StagedModel's checks.
+
+        Returns
+        -------
+        list[dict]
+            One entry per ``_build`` call in call order, with keys ``entry``,
+            ``call_kwargs``, ``start_ele``, ``end_ele`` -- the exact arguments
+            ``get_model`` passed for that stage.
         """
         import virtual_accelerator.registry as reg
         import lume.staged_model as staged_module
 
+        build_calls: list[dict] = []
+
         def fake_build(entry, call_kwargs, start_ele, end_ele):
+            build_calls.append(
+                {
+                    "entry": entry,
+                    "call_kwargs": dict(call_kwargs),
+                    "start_ele": start_ele,
+                    "end_ele": end_ele,
+                }
+            )
             return stages_by_name[entry.name]
 
         class FakeStagedModel:
@@ -433,6 +462,7 @@ class TestStagedOverlap:
 
         monkeypatch.setattr(reg, "_build", fake_build)
         monkeypatch.setattr(staged_module, "StagedModel", FakeStagedModel)
+        return build_calls
 
     def test_read_only_overlap_is_removed_downstream(self, monkeypatch):
         upstream = _FakeStage(
@@ -503,6 +533,118 @@ class TestStagedOverlap:
         )
 
         assert model.lume_model_instances == [upstream, downstream]
+
+
+class TestStagedHandoffWiring:
+    """The upstream stage must not include the handoff element.
+
+    The registry engineers exclusivity per engine: Bmad gets the Tao
+    ``"<handoff>-1"`` offset, IMPACT gets ``include_end_element=False``. Both
+    paths need coverage -- without it, a regression that reverted either would
+    show up only as a duplicate-variable failure inside ``StagedModel`` after a
+    full simulator run.
+    """
+
+    def _stages(self):
+        return {
+            "impact_cu_inj": _FakeStage({"IMPACT:ONLY": _ReadOnlyVar()}),
+            "surrogate_cu_inj": _FakeStage({"SURROGATE:ONLY": _ReadOnlyVar()}),
+            "bmad_cu_hxr": _FakeStage({"BMAD:ONLY": _ReadOnlyVar()}),
+        }
+
+    def test_impact_upstream_gets_include_end_element_false(self, monkeypatch):
+        # IMPACT's set_stop_location prunes to s <= stop, so without this flag
+        # the boundary element (and its PVs) would stay on the upstream stage
+        # and collide with the downstream stage that owns the plane.
+        stages = self._stages()
+        build_calls = TestStagedOverlap._install(monkeypatch, stages)
+
+        get_model(
+            ["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=100
+        )
+
+        upstream_call = next(
+            c for c in build_calls if c["entry"].name == "impact_cu_inj"
+        )
+        assert upstream_call["call_kwargs"].get("include_end_element") is False
+
+    def test_impact_upstream_end_ele_is_bare_handoff(self, monkeypatch):
+        # The exclusion happens via include_end_element=False, not via a "-1"
+        # offset in the element name -- IMPACT has no such syntax.
+        stages = self._stages()
+        build_calls = TestStagedOverlap._install(monkeypatch, stages)
+
+        get_model(
+            ["impact_cu_inj", "bmad_cu_hxr"], handoff_loc="YAG03", n_particles=100
+        )
+
+        upstream_call = next(
+            c for c in build_calls if c["entry"].name == "impact_cu_inj"
+        )
+        assert upstream_call["end_ele"] == "YAG03"
+
+    def test_bmad_upstream_end_ele_gets_minus_one_offset(self, monkeypatch):
+        # Bmad's -slice_lattice accepts "<name>-1" to mean the element before
+        # <name>, so the upstream slice ends immediately before the handoff.
+        # This branch of _exclusive_end is only reachable when the upstream
+        # engine is bmad -- covered here with a bmad -> bmad chain-like
+        # arrangement using the surrogate as a placeholder is not possible, so
+        # we exercise it directly on _exclusive_end.
+        from virtual_accelerator.registry import _exclusive_end
+        from virtual_accelerator.registry.models import MODELS
+
+        assert _exclusive_end(MODELS["bmad_cu_hxr"], "OTR2") == "OTR2-1"
+
+    def test_non_impact_upstream_omits_include_end_element(self, monkeypatch):
+        # surrogate_cu_inj does not declare include_end_element, so the
+        # registry must not set it -- the surrogate has a fixed extent that
+        # already ends at OTR2, and injecting the flag would raise a
+        # TypeError from the builder.
+        stages = self._stages()
+        build_calls = TestStagedOverlap._install(monkeypatch, stages)
+
+        get_model(
+            ["surrogate_cu_inj", "bmad_cu_hxr"], handoff_loc="OTR2", n_particles=100
+        )
+
+        upstream_call = next(
+            c for c in build_calls if c["entry"].name == "surrogate_cu_inj"
+        )
+        assert "include_end_element" not in upstream_call["call_kwargs"]
+
+    def test_downstream_stage_keeps_default_inclusive_end(self, monkeypatch):
+        # The exclusion applies only to the *upstream* stage. The downstream
+        # stage still owns the handoff plane, so nothing about it changes at
+        # the boundary -- and its end_ele is the user-facing overall end.
+        stages = self._stages()
+        build_calls = TestStagedOverlap._install(monkeypatch, stages)
+
+        get_model(
+            ["impact_cu_inj", "bmad_cu_hxr"],
+            handoff_loc="YAG03",
+            end_ele="OTR4",
+            n_particles=100,
+        )
+
+        downstream_call = next(
+            c for c in build_calls if c["entry"].name == "bmad_cu_hxr"
+        )
+        assert "include_end_element" not in downstream_call["call_kwargs"]
+        assert downstream_call["start_ele"] == "YAG03"
+        assert downstream_call["end_ele"] == "OTR4"
+
+    def test_single_model_impact_call_keeps_include_end_element_true(self, monkeypatch):
+        # Single-model use is unchanged: get_model("impact_cu_inj",
+        # end_ele="YAG03") should NOT set include_end_element=False, because
+        # there is no downstream stage to own the plane. The user asked to
+        # stop at YAG03 and expects YAG03's PVs.
+        stages = self._stages()
+        build_calls = TestStagedOverlap._install(monkeypatch, stages)
+
+        get_model("impact_cu_inj", end_ele="YAG03", n_particles=100)
+
+        (call,) = build_calls
+        assert call["call_kwargs"].get("include_end_element", True) is True
 
 
 class TestElementNameCase:

@@ -14,7 +14,7 @@ class ModelEntry:
     name : str
         Registry key, also used to qualify per-stage kwargs.
     description : str
-        One-line summary shown by ``models_available``.
+        One-line summary shown by ``list_models()``.
     facility : str
         "lcls" or "facet2". Models of different facilities cannot be staged.
     simulator : str

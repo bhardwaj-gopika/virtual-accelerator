@@ -190,7 +190,11 @@ def list_handoff_points(model_name: str) -> tuple[str, ...]:
     return _entry(model_name).handoff_points
 
 
-CATHODE = "CATHODE"
+# Facility-specific cathode element names. Cathodes mark the front of the
+# machine, so nothing is upstream of them and they can never be handoff points,
+# regardless of which facility's naming convention the model uses -- FACET's
+# element carries an "F" suffix (CATHODEF) while LCLS uses the bare name.
+CATHODES: frozenset[str] = frozenset({"CATHODE", "CATHODEF"})
 
 
 def common_handoff_points(*model_names: str) -> tuple[str, ...]:
@@ -217,8 +221,9 @@ def common_handoff_points(*model_names: str) -> tuple[str, ...]:
 
     Notes
     -----
-    ``CATHODE`` is always excluded: it marks the front of the machine, so nothing
-    can hand over to a stage beginning there.
+    Cathode elements are always excluded (``CATHODE`` for LCLS, ``CATHODEF`` for
+    FACET): they mark the front of the machine, so nothing can hand over to a
+    stage beginning there.
 
     This is the set intersection, not the union. A union would admit planes only
     one stage can reach -- ``impact_cu_inj`` stops by z=16.5 m and so cannot reach
@@ -232,7 +237,7 @@ def common_handoff_points(*model_names: str) -> tuple[str, ...]:
     shared = set(entries[0].handoff_points)
     for entry in entries[1:]:
         shared &= set(entry.handoff_points)
-    shared.discard(CATHODE)
+    shared -= CATHODES
 
     return tuple(name for name in entries[0].handoff_points if name in shared)
 
@@ -532,9 +537,9 @@ def _validate_pair(upstream: ModelEntry, downstream: ModelEntry, handoff: str) -
         )
         raise ValueError(f"{downstream.name!r} cannot be a downstream stage: {reason}.")
 
-    if handoff == CATHODE:
+    if handoff in CATHODES:
         raise ValueError(
-            f"{CATHODE!r} cannot be a handoff location: nothing is upstream of it."
+            f"{handoff!r} cannot be a handoff location: nothing is upstream of it."
         )
 
     shared = common_handoff_points(upstream.name, downstream.name)
@@ -585,7 +590,7 @@ def _strip_overlapping_variables(upstream, downstream, upstream_name, downstream
     Parameters
     ----------
     upstream : LUMEModel
-        Stage that tracks the beam to the handoff plane and so owns its PVs.
+        Stage that tracks the beam up to (but not through) the handoff plane.
     downstream : LUMEModel
         Stage the duplicates are removed from. Must support
         ``unregister_action_variable``.
@@ -608,12 +613,17 @@ def _strip_overlapping_variables(upstream, downstream, upstream_name, downstream
 
     Notes
     -----
-    Both stages include the handoff element, so both publish its PVs and
-    ``StagedModel`` would reject the pair as duplicates.
+    A safeguard, not the primary handoff mechanism. The upstream stage already
+    ends before the handoff element (via Bmad's ``"<handoff>-1"`` slice or
+    IMPACT's ``include_end_element=False``), so the downstream stage owns the
+    handoff plane and there is usually no overlap. Anything that does turn out
+    to be shared is unregistered from the downstream stage before
+    ``StagedModel`` sees the pair, since it would otherwise reject the chain
+    outright.
 
-    A writable overlap means something different and worse: both stages would be
-    driving the same magnet, so their extents overlap rather than meeting at a
-    plane, and dropping it downstream would leave that stage tracking a stale
+    A writable overlap means something different and worse: both stages would
+    be driving the same magnet, so their extents overlap rather than meeting at
+    a plane, and dropping it downstream would leave that stage tracking a stale
     value.
     """
     from lume.actions import WritableActionMixin
@@ -716,12 +726,12 @@ def get_model(
     ``stage_kwargs`` and stage-specific params are rejected at the top level.
 
     For staged chains this handles two things that are easy to get wrong by
-    hand.  Duplicate variables at the handoff are removed automatically: both
-    stages include the handoff element, so both publish its PVs, and the
-    upstream stage owns them because it is the stage that tracks the beam to
-    that plane. Beam tracking is forced on for every stage that supports it,
-    since a non-final stage must produce ``final_particles`` and a non-first
-    stage must accept ``initial_particles``.
+    hand. The upstream stage ends immediately before the handoff element, so
+    the downstream stage owns its PVs; any unexpected duplicate read-only
+    variables are removed before wrapping the stages. Beam tracking is forced
+    on for every stage that supports it, since a non-final stage must produce
+    ``final_particles`` and a non-first stage must accept
+    ``initial_particles``.
 
     See ``docs/model_registry_usage.md`` for worked examples.
     """
