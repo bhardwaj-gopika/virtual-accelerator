@@ -32,7 +32,35 @@ pip install .[surrogate]
 pip install .[all]
 ```
 
-Supported models (see `docs/model_registry_usage.md` for the full API):
+## Loading a model
+
+Use `get_model()` to build a single model or a staged chain. See
+`docs/model_registry_usage.md` for the full API.
+
+```python
+from virtual_accelerator.registry import get_model
+
+# Single model, optionally stopping at a specific element:
+model = get_model("bmad_cu_hxr", end_ele="TD11")
+
+# Staged chain (upstream -> downstream), handoff inferred when unambiguous:
+model = get_model(["surrogate_cu_inj", "bmad_cu_hxr"], end_ele="OTR4", n_particles=500)
+
+# Or use a chain alias:
+model = get_model("high_fidelity_cu_hxr_s2e", handoff_loc="YAG03", n_particles=1000)
+```
+
+Discovery helpers:
+
+```python
+from virtual_accelerator.registry import list_models, list_handoff_points, common_handoff_points
+
+print(list_models())                                    # table of all models + chains
+list_handoff_points("bmad_cu_hxr")                      # suggested handoff planes
+common_handoff_points("impact_cu_inj", "bmad_cu_hxr")   # shared handoffs between two models
+```
+
+Supported models:
 
 | Model | Facility | Simulator | Start | End | Extras |
 | --- | --- | --- | --- | --- | --- |
