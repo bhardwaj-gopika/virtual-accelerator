@@ -123,7 +123,7 @@ def build_bmad_model(
         )
 
     # set tracking start
-    tao.cmd(f"set track_start element = {start_element}")
+    tao.cmd(f"set beam track_start = {start_element}")
 
     # apply any custom tao commands (e.g. for setting up custom aliases or other tao configuration needed for the model)
     if custom_tao_commands is not None:
