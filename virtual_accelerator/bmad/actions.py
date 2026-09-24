@@ -379,7 +379,7 @@ class RMatrixAction(NDVariable, ReadOnlyActionMixin):
 
     shape: tuple[int, int] = (6, 6)
     read_only: bool = True
-    dtype: type = float
+    dtype: np.dtype = np.dtype(np.float64)
 
     def _get(self, tao: Tao) -> float:
         return np.array(rmat_get(tao, self.start_element, self.end_element))
