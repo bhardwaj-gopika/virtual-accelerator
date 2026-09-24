@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 
@@ -23,9 +25,9 @@ class TestGetCUHXRRmat:
         assert model.supported_variables[rmat_name].read_only is True
 
     def test_rmat_shape_and_dtype(self):
-        model = get_cu_hxr_rmat("OTR2", "OTR4")
+        model = get_cu_hxr_rmat("WS27644", "WS28144")
 
-        rmat = model.get_value("rmat:OTR2_OTR4")
+        rmat = model.get_value("rmat:WS27644_WS28144")
         assert isinstance(rmat, np.ndarray)
         assert rmat.shape == (6, 6)
         assert rmat.dtype == float
@@ -58,3 +60,22 @@ class TestGetCUHXRRmat:
         updated_rmat = model.get_value("rmat:OTR2_OTR4")
 
         assert not np.allclose(initial_rmat, updated_rmat)
+
+    def test_rmat_get_value_performance(self):
+        model = get_cu_hxr_rmat("WS27644", "WS28144")
+
+        # warm up so lazy imports/caching don't skew the timing
+        model.set({})
+        model.get_value("rmat:WS27644_WS28144")
+
+        n_calls = 20
+        start = time.perf_counter()
+        for _ in range(n_calls):
+            model.set({})
+            model.get_value("rmat:WS27644_WS28144")
+        elapsed = time.perf_counter() - start
+
+        mean_time = elapsed / n_calls
+        print(f"rmat get_value mean time: {mean_time * 1e3:.3f} ms")
+
+        assert mean_time < 100e-3
