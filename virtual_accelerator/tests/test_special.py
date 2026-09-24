@@ -23,9 +23,9 @@ class TestGetCUHXRRmat:
         assert model.supported_variables[rmat_name].read_only is True
 
     def test_rmat_shape_and_dtype(self):
-        model = get_cu_hxr_rmat("OTR2", "OTR4")
+        model = get_cu_hxr_rmat("WS27644", "WS28144")
 
-        rmat = model.get_value("rmat:OTR2_OTR4")
+        rmat = model.get_value("rmat:WS27644_WS28144")
         assert isinstance(rmat, np.ndarray)
         assert rmat.shape == (6, 6)
         assert rmat.dtype == float
