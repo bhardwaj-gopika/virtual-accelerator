@@ -1,11 +1,13 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from types import MethodType
 import yaml
 import warnings
 
+
+from virtual_accelerator.bmad.variables import get_all_element_types, get_variables
 from virtual_accelerator.utils.optional_dependencies import import_optional
+from virtual_accelerator.utils.variables import get_element_attr_mapping
 
 import logging
 
@@ -28,39 +30,6 @@ def _check_optional_modules(module_names: list[str], feature: str, extra: str) -
     """Validate all optional modules for a feature in a single gate check."""
     for module_name in module_names:
         import_optional(module_name, feature=feature, extra=extra)
-
-
-def _restore_bmad_set_values(model, rollback_values: dict[str, object]) -> None:
-    model.simulator.cmd("set global lattice_calc_on = F")
-    try:
-        for name, value in rollback_values.items():
-            model.supported_variables[name]._set(model.simulator, value)
-    finally:
-        model.simulator.cmd("set global lattice_calc_on = T")
-
-    model._refresh_dynamic_action_variables()
-    model.update_state()
-
-
-def _wrap_bmad_set_with_rollback(model):
-    original_set = model._set
-
-    def _set_with_rollback(self, values: dict[str, object]) -> None:
-        rollback_values = {
-            name: self.supported_variables[name]._get(self.simulator)
-            for name in values
-            if name in self.supported_variables
-            and self.supported_variables[name].read_only is False
-        }
-
-        try:
-            original_set(values)
-        except Exception:
-            _restore_bmad_set_values(self, rollback_values)
-            raise
-
-    model._set = MethodType(_set_with_rollback, model)
-    return model
 
 
 def build_bmad_model(
@@ -87,8 +56,6 @@ def build_bmad_model(
 
     from pytao import Tao
     from lume_bmad.model import LUMEBmadModel
-    from virtual_accelerator.bmad.variables import get_all_element_types, get_variables
-    from virtual_accelerator.utils.variables import get_element_attr_mapping
 
     lattice_root = os.environ[spec.lattice_env_var]
     init_file = os.path.join(lattice_root, spec.tao_init_relpath)
@@ -132,7 +99,6 @@ def build_bmad_model(
         action_variables=variables,
         dump_locations=list(active_screens),
     )
-    model = _wrap_bmad_set_with_rollback(model)
 
     # if tracking is enabled, set up the beam in the model based on the provided custom beam path or default beam path in the spec
     if track_beam:
