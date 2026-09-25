@@ -211,7 +211,7 @@ class TestCUHXRBmad:
 
         model = get_cu_hxr_bmad_model(
             start_element="YAG03",
-            end_element="TCAV0",
+            end_element="TCAV0#1",
             track_beam=False,
             end_mode="beginning",
         )
