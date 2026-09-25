@@ -7,7 +7,6 @@ import warnings
 
 from virtual_accelerator.bmad.variables import (
     get_all_element_types,
-    get_normalized_element_names,
     get_variables,
 )
 from virtual_accelerator.utils.optional_dependencies import import_optional
@@ -100,9 +99,7 @@ def build_bmad_model(
     if end_mode == "beginning":
         # stop tao at second to last element
         element_list = tao.lat_list("*", "ele.name")
-        end_element = element_list[
-            element_list.index(end_element) - 1
-        ]
+        end_element = element_list[element_list.index(end_element) - 1]
         tao = Tao(
             f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}"
         )
@@ -115,9 +112,7 @@ def build_bmad_model(
 
     if start_mode == "end":
         element_list = tao.lat_list("*", "ele.name")
-        start_element = element_list[
-            element_list.index(start_element) + 1
-        ]
+        start_element = element_list[element_list.index(start_element) + 1]
         tao = Tao(
             f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}"
         )
