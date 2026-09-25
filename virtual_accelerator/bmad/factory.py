@@ -99,9 +99,9 @@ def build_bmad_model(
 
     if end_mode == "beginning":
         # stop tao at second to last element
-        normalized_element_list = get_normalized_element_names(tao)
-        end_element = normalized_element_list[
-            normalized_element_list.index(end_element) - 1
+        element_list = tao.lat_list("*", "ele.name")
+        end_element = element_list[
+            element_list.index(end_element) - 1
         ]
         tao = Tao(
             f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}"
@@ -114,9 +114,9 @@ def build_bmad_model(
         )
 
     if start_mode == "end":
-        normalized_element_list = get_normalized_element_names(tao)
-        start_element = normalized_element_list[
-            normalized_element_list.index(start_element) + 1
+        element_list = tao.lat_list("*", "ele.name")
+        start_element = element_list[
+            element_list.index(start_element) + 1
         ]
         tao = Tao(
             f"-init {init_file} -noplot -slice_lattice {start_element}:{end_element}"

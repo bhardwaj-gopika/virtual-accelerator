@@ -126,7 +126,7 @@ def get_cu_hxr_staged_model(n_particles: int = 1000, **kwargs) -> StagedModel:
 def get_cu_hxr_cheetah_model(
     n_particles: int = 1000,
     start_element="OTR2",
-    end_element="TD11",
+    end_element="END",
     start_mode="beginning",
     end_mode="end",
 ):
@@ -173,6 +173,16 @@ def get_cu_hxr_cheetah_model(
     segment = Segment.from_lattice_json(
         os.path.join(lcls_lattice, "cheetah/nc_hxr.json")
     )
+
+    # check start mode and end mode arguments
+    if start_mode not in ["beginning", "end"]:
+        raise ValueError(
+            f"Invalid start_mode: {start_mode}. Must be 'beginning' or 'end'."
+        )
+    if end_mode not in ["beginning", "end"]:
+        raise ValueError(f"Invalid end_mode: {end_mode}. Must be 'beginning' or 'end'.")
+
+    # get subsegment
     segment = segment.subcell(
         start=start_element.lower(),
         end=end_element.lower(),
