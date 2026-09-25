@@ -125,13 +125,27 @@ def get_cu_hxr_staged_model(n_particles: int = 1000, **kwargs) -> StagedModel:
 
 def get_cu_hxr_cheetah_model(
     n_particles: int = 1000,
-    start_element="OTR2",
-    end_element="END",
+    start_element="otr2",
+    end_element="enddmph_2",
     start_mode="beginning",
     end_mode="end",
 ):
     """
     Get the LUMECheetahModel for the CU_HXR lattice.
+
+    Parameters
+    ----------
+    n_particles: int, optional
+        Number of particles to simulate, by default 1000.
+    start_element: str, optional
+        Name of the starting element in the lattice, by default "otr2".
+    end_element: str, optional
+        Name of the ending element in the lattice, by default "enddmph_2".
+    start_mode: str, optional
+        Mode for determining the start of the lattice slice, by default "beginning".
+    end_mode: str, optional
+        Mode for determining the end of the lattice slice, by default "end".
+
 
     Returns
     -------
