@@ -67,6 +67,9 @@ jobs:
       - name: Install pytao (includes bmad)
         run: conda install -y "pytao>=1"
 
+      - name: Install IMPACT-T solver
+        run: conda install -y -c conda-forge "impact-t=*=nompi*"
+
       - name: Install CPU-only PyTorch
         run: pip install --upgrade --index-url https://download.pytorch.org/whl/cpu torch
 
@@ -135,20 +138,24 @@ jobs:
           set -u
           FAIL="$RUNNER_TEMP/caget_failures.txt"
           : > "$FAIL"
-          BATCH=50
           mapfile -t PVS < "$RUNNER_TEMP/pvs.txt"
-          echo "Checking ${#PVS[@]} PVs in batches of $BATCH..."
-          for ((i=0; i<${#PVS[@]}; i+=BATCH)); do
-            CHUNK=("${PVS[@]:i:BATCH}")
-            OUTPUT="$(caget -w 5 "${CHUNK[@]}" 2>&1 || true)"
-            # pyepics/caget prints "<pv> *** disconnected" or "Channel connect timed out"
-            # for unreachable PVs; everything else is a legitimate (even if NaN) value.
-            echo "$OUTPUT" | grep -E 'disconnected|Channel connect timed out|Timeout' \
-              >> "$FAIL" || true
+          echo "Checking ${#PVS[@]} PVs individually..."
+          CHECKED=0
+          for pv in "${PVS[@]}"; do
+            OUTPUT="$(caget -w 10 "$pv" 2>&1 || true)"
+            if echo "$OUTPUT" | grep -qE 'disconnected|Channel connect timed out|Timeout|not found'; then
+              echo "$pv: $OUTPUT" >> "$FAIL"
+            fi
+            CHECKED=$((CHECKED + 1))
+            if (( CHECKED % 500 == 0 )); then
+              echo "  ... $CHECKED / ${#PVS[@]}"
+            fi
           done
           if [[ -s "$FAIL" ]]; then
-            echo "The following PVs failed to connect:"
-            cat "$FAIL"
+            FAIL_COUNT=$(wc -l < "$FAIL")
+            echo "::error::$FAIL_COUNT PV(s) failed to connect"
+            echo "First 50 failures:"
+            head -n 50 "$FAIL"
             exit 1
           fi
           echo "All ${#PVS[@]} PVs reachable."
