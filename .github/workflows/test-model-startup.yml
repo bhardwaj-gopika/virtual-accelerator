@@ -15,19 +15,35 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model:
-          - impact_cu_inj
-          - bmad_cu_hxr
-          - surrogate_cu_inj
-          - cheetah_cu_hxr
-          - zfel_cu_hxr
-          - impact_f2e_inj
-          - surrogate_f2e_inj
-          - bmad_f2_elec
-          - high_fidelity_cu_hxr_s2e
-          - fast_cu_hxr_s2e
-          - high_fidelity_facet2_s2e
-          - fast_facet2_s2e
+        include:
+          # n-particles=10 keeps the sim quick without changing which PVs are
+          # published; omit it for backends that do not sample a count
+          # (bmad single stages, zfel). end-ele=TD11 on the cu_hxr chains
+          # avoids a downstream particle-loss datum (orbit.x[142]).
+          - model: impact_cu_inj
+            args: "--n-particles 10"
+          - model: bmad_cu_hxr
+            args: ""
+          - model: surrogate_cu_inj
+            args: "--n-particles 10"
+          - model: cheetah_cu_hxr
+            args: "--n-particles 10"
+          - model: zfel_cu_hxr
+            args: ""
+          - model: impact_f2e_inj
+            args: "--n-particles 10"
+          - model: surrogate_f2e_inj
+            args: "--n-particles 10"
+          - model: bmad_f2_elec
+            args: ""
+          - model: high_fidelity_cu_hxr_s2e
+            args: "--n-particles 10 --end-ele TD11"
+          - model: fast_cu_hxr_s2e
+            args: "--n-particles 10 --end-ele TD11"
+          - model: high_fidelity_facet2_s2e
+            args: "--n-particles 10"
+          - model: fast_facet2_s2e
+            args: "--n-particles 10"
     defaults:
       run:
         shell: bash -el {0}
@@ -92,7 +108,7 @@ jobs:
       - name: Dump PVs the model publishes
         run: |
           python -m virtual_accelerator.models.runners \
-            "${{ matrix.model }}" --list-pvs \
+            "${{ matrix.model }}" ${{ matrix.args }} --list-pvs \
             > "$RUNNER_TEMP/pvs.txt"
           wc -l "$RUNNER_TEMP/pvs.txt"
           if [[ ! -s "$RUNNER_TEMP/pvs.txt" ]]; then
@@ -103,7 +119,7 @@ jobs:
       - name: Start virtual accelerator
         run: |
           python -m virtual_accelerator.models.runners \
-            "${{ matrix.model }}" --log-level=DEBUG \
+            "${{ matrix.model }}" ${{ matrix.args }} --log-level=DEBUG \
             > "$RUNNER_TEMP/va.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/va.pid"
 
