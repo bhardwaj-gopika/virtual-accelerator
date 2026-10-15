@@ -98,9 +98,19 @@ def main():
 
         if hasattr(signal, "SIGPIPE"):
             signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+        from lume.variables.particle_group import ParticleGroupVariable
+
         model = _build_model(args)
-        for pv in model.supported_variables:
-            print(pv)
+        for name, variable in model.supported_variables.items():
+            # ParticleGroup outputs are python objects (openPMD ParticleGroup /
+            # Cheetah ParticleBeam), not scalar CA channels, so caget cannot
+            # reach them. "name" is a Bmad info stat with no CA endpoint.
+            if isinstance(variable, ParticleGroupVariable):
+                continue
+            if name == "name":
+                continue
+            print(name)
         return
 
     Runner = import_optional_symbol(
