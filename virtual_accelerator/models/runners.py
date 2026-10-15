@@ -91,6 +91,13 @@ def main():
         parser.error("the following arguments are required: model (or --list-models)")
 
     if args.list_pvs:
+        # Behave like `cat`/`grep` when the reader closes early (e.g. `| head`):
+        # exit silently on SIGPIPE instead of letting Python's default handler
+        # raise BrokenPipeError during interpreter shutdown.
+        import signal
+
+        if hasattr(signal, "SIGPIPE"):
+            signal.signal(signal.SIGPIPE, signal.SIG_DFL)
         model = _build_model(args)
         for pv in model.supported_variables:
             print(pv)
