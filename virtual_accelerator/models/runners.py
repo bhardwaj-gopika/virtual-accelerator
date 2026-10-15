@@ -39,6 +39,14 @@ def main():
         help="Print the registry table and exit.",
     )
     parser.add_argument(
+        "--list-pvs",
+        action="store_true",
+        help=(
+            "Build the model and print the PVs it would publish, one per line, "
+            "then exit without starting the server."
+        ),
+    )
+    parser.add_argument(
         "--start-ele",
         default=None,
         help="Start element. Default: model's standard start.",
@@ -81,6 +89,12 @@ def main():
 
     if args.model is None:
         parser.error("the following arguments are required: model (or --list-models)")
+
+    if args.list_pvs:
+        model = _build_model(args)
+        for pv in model.supported_variables:
+            print(pv)
+        return
 
     Runner = import_optional_symbol(
         "lume_pva.runner",
