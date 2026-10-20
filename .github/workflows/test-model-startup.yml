@@ -41,9 +41,9 @@ jobs:
           - model: fast_cu_hxr_s2e
             args: "--n-particles 10 --end-ele TD11"
           - model: high_fidelity_facet2_s2e
-            args: "--n-particles 10"
+            args: "--n-particles 10 --end-ele TD11"
           - model: fast_facet2_s2e
-            args: "--n-particles 10"
+            args: "--n-particles 10 --end-ele TD11"
     defaults:
       run:
         shell: bash -el {0}
